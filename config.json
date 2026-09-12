@@ -3,9 +3,9 @@
   "allowed_host": "idlixku.com",
   "name": "IDLIX",
   "updated_at": "2026-09-12",
-  "latest_version": "1.6.0",
-  "latest_version_code": 16,
-  "release_notes": "1. Netflix-style cinematic splash screen with glowing IDLIX ribbon.\n2. App Update Detection & In-App Update via GitHub Releases.\n3. Intuitive 'Popup Ads Blocked' notification.\n4. Circular & Draggable Floating Cast Button.",
-  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.6.0/IDLIX.apk",
-  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.6.0/IDLIX-TV.apk"
+  "latest_version": "1.7.0",
+  "latest_version_code": 17,
+  "release_notes": "1. Performance optimization with buttery smooth 60/120 FPS scrolling.\n2. Built-in Cloudflare DNS 1.1.1.1 DoH to bypass ISP blocks.\n3. Clean edge-to-edge fullscreen splash screen.\n4. Sleek IDLIX Dark Mode for Cast UI.\n5. Ultra-lightweight APK size under 20MB.",
+  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.7.0/IDLIX.apk",
+  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.7.0/IDLIX-TV.apk"
 }
