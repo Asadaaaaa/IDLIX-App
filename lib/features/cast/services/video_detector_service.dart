@@ -349,9 +349,17 @@ class VideoDetectorService {
           } catch(e) {}
         }
 
-        // Jalankan scan secara berkala
-        setInterval(scanMediaElements, 1500);
-        scanMediaElements();
+        // Event-driven media scanning: hanya scan saat media mulai dimuat atau diputar
+        document.addEventListener('play', function() {
+          setTimeout(scanMediaElements, 300);
+        }, true);
+        document.addEventListener('loadeddata', function() {
+          setTimeout(scanMediaElements, 300);
+        }, true);
+
+        // Scan awal setelah halaman siap
+        setTimeout(scanMediaElements, 1000);
+        setTimeout(scanMediaElements, 3000);
       })();
     ''';
   }

@@ -35,8 +35,8 @@ class CastControlBar extends StatelessWidget {
                 final isPlaying = state == SessionState.playing;
 
                 return Material(
-                  elevation: 6,
-                  color: Colors.blueGrey.shade900,
+                  elevation: 8,
+                  color: const Color(0xFF161922),
                   child: InkWell(
                     onTap: () {
                       CastModalBottomSheet.show(
@@ -52,11 +52,16 @@ class CastControlBar extends StatelessWidget {
                           horizontal: 16,
                           vertical: 10,
                         ),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            top: BorderSide(color: Color(0xFFE50914), width: 1.5),
+                          ),
+                        ),
                         child: Row(
                           children: [
                             const Icon(
-                              Icons.cast_connected,
-                              color: Colors.blueAccent,
+                              Icons.cast_connected_rounded,
+                              color: Color(0xFFE50914),
                               size: 24,
                             ),
                             const SizedBox(width: 12),

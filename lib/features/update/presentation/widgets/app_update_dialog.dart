@@ -72,7 +72,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
         if (!success && mounted) {
           setState(() {
             _isDownloading = false;
-            _errorMessage = 'Gagal membuka penginstal paket APK Android.';
+            _errorMessage = 'Failed to open Android package installer.';
           });
         }
       }
@@ -80,7 +80,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
       if (mounted) {
         setState(() {
           _isDownloading = false;
-          _errorMessage = 'Gagal mengunduh pembaruan: $e';
+          _errorMessage = 'Failed to download update: $e';
         });
       }
     }
@@ -123,7 +123,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                     border: Border.all(color: themeRed, width: 1.5),
                   ),
                   child: Icon(
-                    Icons.system_update_alt,
+                    Icons.system_update_alt_rounded,
                     color: themeRed,
                     size: 28,
                   ),
@@ -134,7 +134,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Pembaruan Tersedia!',
+                        'Update Available!',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -143,7 +143,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Versi ${widget.updateInfo.version} (${widget.isTv ? "IDLIX TV" : "IDLIX"})',
+                        'Version ${widget.updateInfo.version} (${widget.isTv ? "IDLIX TV" : "IDLIX"})',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
@@ -161,7 +161,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
 
             // Release Notes Box
             const Text(
-              'Catatan Rilis:',
+              'What\'s New:',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 13,
@@ -208,7 +208,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Mengunduh... ${(_progress * 100).toStringAsFixed(0)}%',
+                    'Downloading... ${(_progress * 100).toStringAsFixed(0)}%',
                     style: const TextStyle(color: Colors.white70, fontSize: 12),
                   ),
                   if (_totalBytes > 0)
@@ -253,7 +253,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text(
-                      'Nanti',
+                      'Later',
                       style: TextStyle(color: Colors.white60),
                     ),
                   ),
@@ -269,7 +269,7 @@ class _AppUpdateDialogState extends State<AppUpdateDialog> {
                   ),
                   onPressed: _isDownloading ? null : _startUpdate,
                   child: Text(
-                    _isDownloading ? 'Mengunduh...' : 'Perbarui Sekarang',
+                    _isDownloading ? 'Downloading...' : 'Update Now',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),

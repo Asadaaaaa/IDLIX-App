@@ -52,10 +52,10 @@ class TvQuickMenu extends StatelessWidget {
               // Header
               Row(
                 children: [
-                  const Icon(Icons.settings_remote, color: Colors.blueAccent, size: 28),
+                  const Icon(Icons.settings_remote_rounded, color: Color(0xFFE50914), size: 28),
                   const SizedBox(width: 12),
                   const Text(
-                    'Menu Remote Android TV',
+                    'Android TV Remote Menu',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
@@ -86,20 +86,20 @@ class TvQuickMenu extends StatelessWidget {
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.blueAccent.withValues(alpha: 0.15),
+                      color: const Color(0xFFE50914).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.blueAccent.withValues(alpha: 0.5)),
+                      border: Border.all(color: const Color(0xFFE50914).withValues(alpha: 0.5)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.movie, color: Colors.amberAccent, size: 28),
+                        const Icon(Icons.movie_filter_rounded, color: Color(0xFFE50914), size: 28),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Video: ${firstVideo.title}',
+                                'Stream: ${firstVideo.title}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -109,7 +109,7 @@ class TvQuickMenu extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                '${firstVideo.subtitles.length} Subtitle (Indo & English)',
+                                '${firstVideo.subtitles.length} Subtitles available',
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 12,
@@ -128,7 +128,7 @@ class TvQuickMenu extends StatelessWidget {
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.amber.shade700,
+                            backgroundColor: const Color(0xFFE50914),
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
@@ -149,21 +149,21 @@ class TvQuickMenu extends StatelessWidget {
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(
                       isCursorOn ? Icons.mouse : Icons.touch_app,
-                      color: Colors.blueAccent,
+                      color: const Color(0xFFE50914),
                     ),
                     title: const Text(
-                      'Kursor Virtual (Mouse)',
+                      'Virtual Mouse Cursor',
                       style: TextStyle(color: Colors.white, fontSize: 14),
                     ),
                     subtitle: Text(
                       isCursorOn
-                          ? 'Aktif (Gerakkan dengan D-Pad Remote)'
-                          : 'Nonaktif',
+                          ? 'Enabled (Move with Remote D-Pad)'
+                          : 'Disabled',
                       style: const TextStyle(color: Colors.white54, fontSize: 12),
                     ),
                     trailing: Switch(
                       value: isCursorOn,
-                      activeThumbColor: Colors.blueAccent,
+                      activeThumbColor: const Color(0xFFE50914),
                       onChanged: (val) {
                         remoteController.isCursorVisibleNotifier.value = val;
                       },
@@ -185,13 +185,13 @@ class TvQuickMenu extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text(
-                              'Ukuran Teks / Skala Web TV',
+                              'TV Display & Zoom Scale',
                               style: TextStyle(color: Colors.white, fontSize: 14),
                             ),
                             Text(
                               '${(currentScale * 100).toInt()}%',
                               style: const TextStyle(
-                                color: Colors.blueAccent,
+                                color: Color(0xFFE50914),
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -204,7 +204,7 @@ class TvQuickMenu extends StatelessWidget {
                             const SizedBox(width: 8),
                             _buildScaleButton(remoteController, 1.25, '125% (TV)'),
                             const SizedBox(width: 8),
-                            _buildScaleButton(remoteController, 1.5, '150% (Besar)'),
+                            _buildScaleButton(remoteController, 1.5, '150% (Large)'),
                           ],
                         ),
                       ],
@@ -231,7 +231,7 @@ class TvQuickMenu extends StatelessWidget {
                   ),
                   _buildActionButton(
                     icon: Icons.arrow_back,
-                    label: 'Kembali',
+                    label: 'Back',
                     onTap: () async {
                       onClose();
                       if (await getController().canGoBack()) {
@@ -241,7 +241,7 @@ class TvQuickMenu extends StatelessWidget {
                   ),
                   _buildActionButton(
                     icon: Icons.arrow_forward,
-                    label: 'Maju',
+                    label: 'Forward',
                     onTap: () async {
                       onClose();
                       if (await getController().canGoForward()) {
@@ -251,7 +251,7 @@ class TvQuickMenu extends StatelessWidget {
                   ),
                   _buildActionButton(
                     icon: Icons.sync,
-                    label: 'Update URL',
+                    label: 'Check Updates',
                     onTap: () {
                       onClose();
                       onOpenSettings();

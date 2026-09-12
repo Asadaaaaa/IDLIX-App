@@ -10,6 +10,7 @@ import 'package:webview_domain_lock/features/tv/presentation/widgets/tv_virtual_
 import 'package:webview_domain_lock/features/tv/services/tv_remote_controller.dart';
 import 'package:webview_domain_lock/features/webview/models/webview_config.dart';
 import 'package:webview_domain_lock/features/webview/presentation/widgets/loading_overlay.dart';
+import 'package:webview_domain_lock/core/services/dns_service.dart';
 import 'package:webview_domain_lock/core/services/remote_config_service.dart';
 import 'package:webview_domain_lock/features/update/presentation/widgets/app_update_dialog.dart';
 import 'package:webview_domain_lock/features/update/services/app_update_service.dart';
@@ -45,6 +46,7 @@ class _WebViewPageState extends State<WebViewPage> {
   WebViewConfig? _config;
 
   late final AppUpdateService _updateService;
+  late final DnsService _dnsService;
 
   bool _isLoading = true;
   int _loadingProgress = 0;
@@ -64,6 +66,7 @@ class _WebViewPageState extends State<WebViewPage> {
     _castManager = CastManager();
     _castManager.init();
     _updateService = AppUpdateService();
+    _dnsService = DnsService();
     _config = widget.initialConfig;
 
     if (widget.isTv) {
@@ -164,7 +167,7 @@ class _WebViewPageState extends State<WebViewPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Domain IDLIX diperbarui: ${latest.mainUrl}'),
+              content: Text('IDLIX domain updated: ${latest.mainUrl}'),
               backgroundColor: Colors.teal,
               duration: const Duration(seconds: 4),
             ),
@@ -173,7 +176,7 @@ class _WebViewPageState extends State<WebViewPage> {
       } else if (showFeedback && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Domain IDLIX sudah yang terbaru (${latest.mainUrl})'),
+            content: Text('IDLIX domain is up to date (${latest.mainUrl})'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -182,7 +185,7 @@ class _WebViewPageState extends State<WebViewPage> {
       if (showFeedback && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Gagal memeriksa pembaruan domain IDLIX dari GitHub.'),
+            content: Text('Failed to check for IDLIX domain updates.'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -206,7 +209,7 @@ class _WebViewPageState extends State<WebViewPage> {
       } else if (showFeedback) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Aplikasi IDLIX sudah versi terbaru.'),
+            content: Text('IDLIX app is up to date.'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -215,7 +218,7 @@ class _WebViewPageState extends State<WebViewPage> {
       if (showFeedback && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Gagal memeriksa pembaruan aplikasi.'),
+            content: Text('Failed to check for app updates.'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -327,8 +330,15 @@ class _WebViewPageState extends State<WebViewPage> {
             return NavigationDecision.prevent;
           },
         ),
-      )
-      ..loadRequest(Uri.parse(_config!.mainUrl));
+      );
+
+    // Resolve domain target via Cloudflare DNS 1.1.1.1 DoH sebelum membuka URL
+    try {
+      final host = Uri.parse(_config!.mainUrl).host;
+      _dnsService.resolveHost(host);
+    } catch (_) {}
+
+    controller.loadRequest(Uri.parse(_config!.mainUrl));
 
     setState(() {
       _controller = controller;
@@ -336,10 +346,13 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   /// JavaScript injection untuk mengarahkan window.open dan target="_blank" ke dalam WebView
-  /// sehingga tetap dievaluasi oleh NavigationDelegate
+  /// Menggunakan event delegation ringan tanpa MutationObserver agar scrolling tetap 60/120 FPS
   void _preventPopupsAndNewWindows(WebViewController controller) {
     const jsScript = '''
       (function() {
+        if (window.__popupProtectionInjected) return;
+        window.__popupProtectionInjected = true;
+
         // Override window.open agar membuka di frame saat ini
         window.open = function(url) {
           if (url) {
@@ -348,24 +361,18 @@ class _WebViewPageState extends State<WebViewPage> {
           return null;
         };
 
-        // Mengubah target="_blank" menjadi target="_self"
-        function sanitizeLinks() {
-          var links = document.getElementsByTagName('a');
-          for (var i = 0; i < links.length; i++) {
-            if (links[i].getAttribute('target') === '_blank') {
-              links[i].setAttribute('target', '_self');
+        // Event delegation ringan saat click: mengubah target=_blank menjadi target=_self
+        document.addEventListener('click', function(e) {
+          try {
+            var el = e.target;
+            while (el && el.tagName !== 'A' && el !== document.body) {
+              el = el.parentElement;
             }
-          }
-        }
-
-        sanitizeLinks();
-        // Amati perubahan DOM
-        var observer = new MutationObserver(function() {
-          sanitizeLinks();
-        });
-        if (document.body) {
-          observer.observe(document.body, { childList: true, subtree: true });
-        }
+            if (el && el.tagName === 'A' && el.getAttribute('target') === '_blank') {
+              el.setAttribute('target', '_self');
+            }
+          } catch(err) {}
+        }, true);
       })();
     ''';
     controller.runJavaScript(jsScript).catchError((_) {});
@@ -433,162 +440,169 @@ class _WebViewPageState extends State<WebViewPage> {
       },
       child: Scaffold(
         backgroundColor: Colors.black,
-        body: SafeArea(
-          top: !widget.isTv,
-          bottom: false,
-          child: Stack(
-            children: [
-            // 1. Fullscreen Custom HTML5 Video Widget jika dipicu oleh player website
-            if (_fullscreenCustomWidget != null)
-              Positioned.fill(child: _fullscreenCustomWidget!),
+        body: Stack(
+          children: [
+            // Main content wrapped in SafeArea
+            SafeArea(
+              top: !widget.isTv,
+              bottom: false,
+              child: Stack(
+                children: [
+                  // 1. Fullscreen Custom HTML5 Video Widget
+                  if (_fullscreenCustomWidget != null)
+                    Positioned.fill(child: _fullscreenCustomWidget!),
 
-            // 2. WebView Biasa
-            if (_controller != null && !_hasError && _fullscreenCustomWidget == null)
-              WebViewWidget(controller: _controller!),
+                  // 2. Main WebView
+                  if (_controller != null && !_hasError && _fullscreenCustomWidget == null)
+                    WebViewWidget(controller: _controller!),
 
-            // 3. Error State
-            if (_hasError && _fullscreenCustomWidget == null)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.redAccent,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Unable to load website.',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          _errorMessage!,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _hasError = false;
-                            _errorMessage = null;
-                          });
-                          if (_controller != null && _config != null) {
-                            _controller!.loadRequest(Uri.parse(_config!.mainUrl));
-                          }
-                        },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // 4. Splash Screen Sinematik IDLIX saat pemuatan awal
-            if (_isInitialSplashVisible && _fullscreenCustomWidget == null)
-              IdlixSplashScreen(
-                loadingProgress: _loadingProgress,
-                isFinished: !_isLoading && !_hasError,
-                onDismissed: () {
-                  if (mounted) {
-                    setState(() {
-                      _isInitialSplashVisible = false;
-                    });
-                  }
-                },
-              ),
-
-            // 4b. Loading Overlay saat navigasi setelah splashscreen selesai
-            if (!_isInitialSplashVisible && _isLoading && !_hasError && _fullscreenCustomWidget == null)
-              LoadingOverlay(progress: _loadingProgress),
-
-            // 5. Tombol Floating Cast Bulat & Dapat Digeser (Draggable)
-            if (_fullscreenCustomWidget == null)
-              DraggableCastButton(
-                videoDetectorService: _videoDetectorService,
-                castManager: _castManager,
-              ),
-
-            // 6. Kursor Virtual Mouse untuk Remote TV
-            if (widget.isTv && _tvRemoteController != null && _fullscreenCustomWidget == null)
-              TvVirtualCursor(remoteController: _tvRemoteController!),
-
-            // 6. Tombol Akses Cepat Menu Remote TV di Layar (Hanya di TV)
-            if (widget.isTv && _fullscreenCustomWidget == null)
-              Positioned(
-                top: 12,
-                left: 12,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _isTvMenuOpen = !_isTvMenuOpen;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          Icon(Icons.settings_remote, color: Colors.blueAccent, size: 16),
-                          SizedBox(width: 6),
-                          Text(
-                            'TV Remote (Menu)',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
+                  // 3. Error State
+                  if (_hasError && _fullscreenCustomWidget == null)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              size: 64,
+                              color: Colors.redAccent,
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Unable to load website.',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                _errorMessage!,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _hasError = false;
+                                  _errorMessage = null;
+                                });
+                                if (_controller != null && _config != null) {
+                                  _controller!.loadRequest(Uri.parse(_config!.mainUrl));
+                                }
+                              },
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Retry'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ),
 
-            // 7. Menu Cepat TV Overlay
-            if (widget.isTv && _isTvMenuOpen && _tvRemoteController != null)
+                  // 4. Loading Overlay during subsequent navigation
+                  if (!_isInitialSplashVisible && _isLoading && !_hasError && _fullscreenCustomWidget == null)
+                    LoadingOverlay(progress: _loadingProgress),
+
+                  // 5. Draggable Circular Floating Cast Button
+                  if (_fullscreenCustomWidget == null)
+                    DraggableCastButton(
+                      videoDetectorService: _videoDetectorService,
+                      castManager: _castManager,
+                    ),
+
+                  // 6. Virtual Mouse Cursor for Android TV
+                  if (widget.isTv && _tvRemoteController != null && _fullscreenCustomWidget == null)
+                    TvVirtualCursor(remoteController: _tvRemoteController!),
+
+                  // 6b. TV Remote Menu Shortcut Button
+                  if (widget.isTv && _fullscreenCustomWidget == null)
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              _isTvMenuOpen = !_isTvMenuOpen;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.65),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(Icons.settings_remote, color: Colors.blueAccent, size: 16),
+                                SizedBox(width: 6),
+                                Text(
+                                  'TV Remote (Menu)',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // 7. TV Quick Menu Overlay
+                  if (widget.isTv && _isTvMenuOpen && _tvRemoteController != null)
+                    Positioned.fill(
+                      child: TvQuickMenu(
+                        remoteController: _tvRemoteController!,
+                        getController: () => _controller!,
+                        videoDetectorService: _videoDetectorService,
+                        castManager: _castManager,
+                        onOpenSettings: () {
+                          _checkRemoteConfigUpdate(showFeedback: true);
+                          _checkForAppUpdate(showFeedback: true);
+                        },
+                        onClose: () {
+                          setState(() {
+                            _isTvMenuOpen = false;
+                          });
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+            // Pure Edge-to-Edge Fullscreen IDLIX Splash Screen
+            if (_isInitialSplashVisible && _fullscreenCustomWidget == null)
               Positioned.fill(
-                child: TvQuickMenu(
-                  remoteController: _tvRemoteController!,
-                  getController: () => _controller!,
-                  videoDetectorService: _videoDetectorService,
-                  castManager: _castManager,
-                  onOpenSettings: () {
-                    _checkRemoteConfigUpdate(showFeedback: true);
-                    _checkForAppUpdate(showFeedback: true);
-                  },
-                  onClose: () {
-                    setState(() {
-                      _isTvMenuOpen = false;
-                    });
+                child: IdlixSplashScreen(
+                  loadingProgress: _loadingProgress,
+                  isFinished: !_isLoading && !_hasError,
+                  onDismissed: () {
+                    if (mounted) {
+                      setState(() {
+                        _isInitialSplashVisible = false;
+                      });
+                    }
                   },
                 ),
               ),
           ],
         ),
-      ),
       ),
     );
   }
