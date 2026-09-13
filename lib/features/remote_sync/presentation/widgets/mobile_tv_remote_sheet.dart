@@ -6,12 +6,14 @@ class MobileTvRemoteSheet extends StatelessWidget {
   final MobileRemoteService remoteService;
   final String currentUrl;
   final String currentTitle;
+  final VoidCallback? onCheckUpdate;
 
   const MobileTvRemoteSheet({
     super.key,
     required this.remoteService,
     required this.currentUrl,
     required this.currentTitle,
+    this.onCheckUpdate,
   });
 
   static void show({
@@ -19,6 +21,7 @@ class MobileTvRemoteSheet extends StatelessWidget {
     required MobileRemoteService remoteService,
     required String currentUrl,
     required String currentTitle,
+    VoidCallback? onCheckUpdate,
   }) {
     showModalBottomSheet(
       context: context,
@@ -28,6 +31,7 @@ class MobileTvRemoteSheet extends StatelessWidget {
         remoteService: remoteService,
         currentUrl: currentUrl,
         currentTitle: currentTitle,
+        onCheckUpdate: onCheckUpdate,
       ),
     );
   }
@@ -107,6 +111,15 @@ class MobileTvRemoteSheet extends StatelessWidget {
                       icon: const Icon(Icons.refresh_rounded, color: Colors.white70),
                       tooltip: 'Cari Ulang TV',
                     ),
+                    if (onCheckUpdate != null)
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          onCheckUpdate!();
+                        },
+                        icon: const Icon(Icons.system_update_rounded, color: Colors.amberAccent),
+                        tooltip: 'Cek Pembaruan Aplikasi',
+                      ),
                   ],
                 ),
                 const SizedBox(height: 14),

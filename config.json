@@ -3,9 +3,9 @@
   "allowed_host": "idlixku.com",
   "name": "IDLIX",
   "updated_at": "2026-09-13",
-  "latest_version": "2.1.0",
-  "latest_version_code": 26,
-  "release_notes": "1. Auto-Play Film di TV: Ketika HP menekan 'Putar Film Ini di TV', TV otomatis membuka link dan langsung mengklik tombol play / memutar film secara otomatis.\\n2. Perbaikan Fullscreen TV: Layar penuh pada TV kini bekerja presisi dengan CSS Fullscreen Fixed Overlay (100vw x 100vh) yang handal.\\n3. Kembalikan Kursor Virtual TV: Kursor mouse virtual bulat aktif kembali di layar TV dan dapat dikontrol dengan remote D-Pad maupun HP.\\n4. Trackpad & Scroll HP: Kendalikan kursor mouse TV langsung dari layar HP secara realtime via low-latency UDP, lengkap dengan tap-to-click dan strip scroll.",
-  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.1.0/IDLIX.apk",
-  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.1.0/IDLIX-TV.apk"
+  "latest_version": "2.1.1",
+  "latest_version_code": 27,
+  "release_notes": "1. Perbaikan Layar Penuh (Fullscreen Video & Iframe): Pemutar film dan iframe kini dapat layar penuh 100% sempurna tanpa terpotong batas kontainer CSS.\\n2. Tombol In-Player 'Layar Penuh': Menambahkan tombol langsung di pojok kanan atas pemutar video untuk akses instan di TV dan HP.\\n3. Sinkronisasi Orientasi Otomatis: Layar HP otomatis berganti ke mode Lanskap dan Immersive Sticky saat memutar layar penuh.\\n4. Izin Iframe Fullscreen: Menjamin semua server streaming diizinkan oleh sistem WebView untuk masuk ke mode layar penuh.\\n5. Cek Pembaruan Instan: Peningkatan sistem deteksi pembaruan anti-cache dan tombol manual cek pembaruan pada remote HP.",
+  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.1.1/IDLIX.apk",
+  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.1.1/IDLIX-TV.apk"
 }

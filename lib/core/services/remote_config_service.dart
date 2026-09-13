@@ -42,10 +42,13 @@ class RemoteConfigService {
   Future<WebViewConfig> fetchLatestConfig() async {
     for (final endpoint in configEndpoints) {
       try {
-        final uri = Uri.parse(endpoint);
+        final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+        final separator = endpoint.contains('?') ? '&' : '?';
+        final uri = Uri.parse('$endpoint${separator}_t=$cacheBuster');
         final request = await _httpClient.getUrl(uri);
-        request.headers.set('User-Agent', 'IDLIX-App/1.2.0');
-        request.headers.set('Cache-Control', 'no-cache');
+        request.headers.set('User-Agent', 'IDLIX-App/2.1.0');
+        request.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        request.headers.set('Pragma', 'no-cache');
 
         final response = await request.close().timeout(const Duration(seconds: 8));
         if (response.statusCode == 200) {

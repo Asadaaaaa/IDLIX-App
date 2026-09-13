@@ -63,6 +63,9 @@ class _WebViewPageState extends State<WebViewPage> {
   String _currentLoadedUrl = '';
   String _currentLoadedTitle = '';
   bool _pendingAutoPlay = false;
+  bool _hasShownUpdateDialog = false;
+  bool _hasRetriedUpdateCheck = false;
+  bool _isCssFullscreenActive = false;
 
   @override
   void initState() {
@@ -158,6 +161,9 @@ class _WebViewPageState extends State<WebViewPage> {
 
   /// Otomatis mencari tombol play / iframe player dan memutarnya setelah redirect
   void _triggerAutoPlay() {
+    if (_controller != null) {
+      _injectPlayerFullscreenHelper(_controller!);
+    }
     _controller?.runJavaScript('''
       (function() {
         function tryClickPlay() {
@@ -209,67 +215,304 @@ class _WebViewPageState extends State<WebViewPage> {
     ''').catchError((_) {});
   }
 
-  /// Toggle Fullscreen handal untuk Android TV (CSS Fixed Overlay + Native Fullscreen fallback)
+  /// Toggle Fullscreen handal untuk TV & HP (CSS Fixed Viewport Overlay + Ancestor Unclip)
   void _togglePlayerFullscreen() {
+    if (_controller == null) return;
+    _injectPlayerFullscreenHelper(_controller!);
     _controller?.runJavaScript('''
       (function() {
-        var container = document.getElementById('embed-holder') ||
-                        document.getElementById('player') ||
-                        document.querySelector('.player-embed') ||
-                        document.querySelector('.player-large') ||
-                        document.querySelector('.play-wrapper') ||
-                        document.querySelector('.embed-responsive') ||
-                        document.querySelector('iframe[src*="embed"]') ||
-                        document.querySelector('iframe[src*="player"]') ||
-                        document.querySelector('iframe') ||
-                        document.querySelector('video');
-        if (!container) return;
-
-        if (window.__isIdlixCssFullscreen) {
-          window.__isIdlixCssFullscreen = false;
-          if (container.dataset.origStyle !== undefined) {
-            container.style.cssText = container.dataset.origStyle;
-          } else {
-            container.style.cssText = '';
-          }
-          var ifr = container.querySelector('iframe') || (container.tagName === 'IFRAME' ? container : null);
-          if (ifr && ifr.dataset.origStyle !== undefined) {
-            ifr.style.cssText = ifr.dataset.origStyle;
-          }
-          document.body.style.overflow = '';
-          if (document.exitFullscreen) {
-            document.exitFullscreen().catch(function(){});
-          } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-          }
-          return;
+        if (typeof window.__toggleIdlixFullscreen === 'function') {
+          window.__toggleIdlixFullscreen();
         }
-
-        window.__isIdlixCssFullscreen = true;
-        container.dataset.origStyle = container.getAttribute('style') || '';
-        container.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; background: #000 !important; margin: 0 !important; padding: 0 !important; border: none !important;';
-
-        var ifr = container.querySelector('iframe') || (container.tagName === 'IFRAME' ? container : null);
-        if (ifr) {
-          ifr.dataset.origStyle = ifr.getAttribute('style') || '';
-          ifr.style.cssText = 'width: 100vw !important; height: 100vh !important; border: none !important; position: fixed !important; top: 0 !important; left: 0 !important; z-index: 2147483647 !important;';
-          ifr.setAttribute('allowfullscreen', 'true');
-        }
-
-        document.body.style.overflow = 'hidden';
-
-        try {
-          var v = container.querySelector('video') || (container.tagName === 'VIDEO' ? container : null);
-          if (v && v.requestFullscreen) {
-            v.requestFullscreen().catch(function(){});
-          } else if (container.requestFullscreen) {
-            container.requestFullscreen().catch(function(){});
-          } else if (container.webkitRequestFullscreen) {
-            container.webkitRequestFullscreen();
-          }
-        } catch(e) {}
       })();
     ''').catchError((_) {});
+  }
+
+  void _onFullscreenStateChanged(bool isFullscreen) {
+    if (!mounted) return;
+    setState(() {
+      _isCssFullscreenActive = isFullscreen;
+    });
+
+    if (isFullscreen) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      if (!widget.isTv) {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ]);
+      }
+    } else {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      if (!widget.isTv) {
+        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      }
+    }
+  }
+
+  /// Injeksi skrip pembantu fullscreen agar semua iframe memiliki izin allowfullscreen,
+  /// selector video target yang akurat, unclip ancestor styling, dan tombol 'Layar Penuh' in-player.
+  void _injectPlayerFullscreenHelper(WebViewController controller) {
+    const script = r'''
+      (function() {
+        if (window.__idlixFsHelperInjected) return;
+        window.__idlixFsHelperInjected = true;
+
+        // 1. Inject Stylesheet untuk CSS Viewport Fullscreen dan In-Player Button
+        var style = document.getElementById('idlix-fs-style');
+        if (!style) {
+          style = document.createElement('style');
+          style.id = 'idlix-fs-style';
+          style.textContent = `
+            html.idlix-fullscreen-locked, body.idlix-fullscreen-locked {
+              overflow: hidden !important;
+              width: 100vw !important;
+              height: 100vh !important;
+              max-width: 100vw !important;
+              max-height: 100vh !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+
+            .idlix-fs-ancestor-override {
+              transform: none !important;
+              -webkit-transform: none !important;
+              filter: none !important;
+              -webkit-filter: none !important;
+              perspective: none !important;
+              -webkit-perspective: none !important;
+              contain: none !important;
+              overflow: visible !important;
+              position: static !important;
+              z-index: 2147483646 !important;
+            }
+
+            .idlix-fs-target-element {
+              position: fixed !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: 100vw !important;
+              height: 100vh !important;
+              max-width: 100vw !important;
+              max-height: 100vh !important;
+              min-width: 100vw !important;
+              min-height: 100vh !important;
+              z-index: 2147483647 !important;
+              background: #000000 !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              border: none !important;
+              box-sizing: border-box !important;
+            }
+
+            .idlix-fs-target-element iframe {
+              position: absolute !important;
+              top: 0 !important;
+              left: 0 !important;
+              width: 100% !important;
+              height: 100% !important;
+              max-width: 100% !important;
+              max-height: 100% !important;
+              border: none !important;
+              z-index: 2147483647 !important;
+            }
+
+            #idlix-inplayer-fs-btn {
+              position: absolute;
+              top: 14px;
+              right: 14px;
+              z-index: 2147483647;
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              padding: 8px 14px;
+              background: rgba(18, 18, 18, 0.88);
+              color: #FFFFFF;
+              border: 1.5px solid #E50914;
+              border-radius: 20px;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              font-size: 13px;
+              font-weight: bold;
+              cursor: pointer;
+              box-shadow: 0 4px 14px rgba(0,0,0,0.6), 0 0 10px rgba(229,9,20,0.4);
+              backdrop-filter: blur(8px);
+              -webkit-backdrop-filter: blur(8px);
+              transition: transform 0.15s ease;
+              user-select: none;
+            }
+            #idlix-inplayer-fs-btn:active {
+              transform: scale(0.93);
+            }
+          `;
+          (document.head || document.documentElement).appendChild(style);
+        }
+
+        // 2. Berikan izin Fullscreen untuk semua iframe di halaman
+        function fixAllIframesFullscreen() {
+          try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+              var ifr = iframes[i];
+              if (!ifr.hasAttribute('allowfullscreen') || ifr.getAttribute('allowfullscreen') !== 'true') {
+                ifr.setAttribute('allowfullscreen', 'true');
+              }
+              ifr.setAttribute('webkitallowfullscreen', 'true');
+              ifr.setAttribute('mozallowfullscreen', 'true');
+              var allow = ifr.getAttribute('allow') || '';
+              if (allow.indexOf('fullscreen') === -1) {
+                ifr.setAttribute('allow', (allow ? allow + '; ' : '') + 'fullscreen *; autoplay *; encrypted-media *; picture-in-picture *');
+              }
+            }
+          } catch(e) {}
+        }
+
+        // 3. Pencari Target Video / Iframe yang Akurat
+        function findVideoTarget() {
+          var video = document.querySelector('video');
+          if (video && (video.offsetWidth > 100 || video.videoWidth > 0)) {
+            return { el: video, isIframe: false };
+          }
+
+          var candidateSelectors = [
+            '#playcontainer iframe',
+            '#embed-holder iframe',
+            '.pframe iframe',
+            '.playex iframe',
+            'div[id^="source-player"] iframe',
+            '.player-embed iframe',
+            '.player-large iframe',
+            '#player iframe',
+            'iframe[src*="embed"]',
+            'iframe[src*="player"]',
+            'iframe[src*="stream"]',
+            'iframe[src*="dood"]',
+            'iframe[src*="tape"]',
+            'iframe[src*="filemoon"]',
+            'iframe[src*="vid"]',
+            'iframe[src*="upstream"]',
+            'iframe[src*="cloud"]'
+          ];
+
+          for (var i = 0; i < candidateSelectors.length; i++) {
+            var el = document.querySelector(candidateSelectors[i]);
+            if (el) return { el: el, isIframe: el.tagName === 'IFRAME' };
+          }
+
+          var allIframes = document.querySelectorAll('iframe');
+          var bestIframe = null;
+          var maxArea = 0;
+          for (var j = 0; j < allIframes.length; j++) {
+            var ifr = allIframes[j];
+            var rect = ifr.getBoundingClientRect();
+            var area = rect.width * rect.height;
+            if (rect.width >= 200 && rect.height >= 120 && area > maxArea) {
+              maxArea = area;
+              bestIframe = ifr;
+            }
+          }
+          if (bestIframe) return { el: bestIframe, isIframe: true };
+
+          var containerIds = ['playcontainer', 'embed-holder', 'player'];
+          for (var k = 0; k < containerIds.length; k++) {
+            var c = document.getElementById(containerIds[k]);
+            if (c) {
+              var subIfr = c.querySelector('iframe');
+              if (subIfr) return { el: subIfr, isIframe: true };
+              return { el: c, isIframe: false };
+            }
+          }
+
+          return null;
+        }
+
+        // 4. Injeksi Tombol In-Player "Layar Penuh"
+        function injectInPlayerFullscreenButton() {
+          if (document.getElementById('idlix-inplayer-fs-btn')) return;
+
+          var target = findVideoTarget();
+          if (!target || !target.el) return;
+
+          var parent = target.el.parentElement || target.el;
+          if (window.getComputedStyle(parent).position === 'static') {
+            parent.style.position = 'relative';
+          }
+
+          var btn = document.createElement('div');
+          btn.id = 'idlix-inplayer-fs-btn';
+          btn.innerHTML = window.__isIdlixCssFullscreen ? '⛶ Kecilkan' : '⛶ Layar Penuh';
+          btn.title = 'Buka / Tutup Layar Penuh';
+          btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            window.__toggleIdlixFullscreen();
+          });
+
+          parent.appendChild(btn);
+        }
+
+        // 5. Toggle Layar Penuh
+        window.__toggleIdlixFullscreen = function() {
+          var target = findVideoTarget();
+          if (!target || !target.el) return false;
+
+          var el = target.el;
+
+          if (window.__isIdlixCssFullscreen) {
+            window.__isIdlixCssFullscreen = false;
+            el.classList.remove('idlix-fs-target-element');
+            var ancestors = document.querySelectorAll('.idlix-fs-ancestor-override');
+            for (var a = 0; a < ancestors.length; a++) {
+              ancestors[a].classList.remove('idlix-fs-ancestor-override');
+            }
+            document.documentElement.classList.remove('idlix-fullscreen-locked');
+            document.body.classList.remove('idlix-fullscreen-locked');
+
+            var btn = document.getElementById('idlix-inplayer-fs-btn');
+            if (btn) btn.innerHTML = '⛶ Layar Penuh';
+
+            if (document.exitFullscreen) document.exitFullscreen().catch(function(){});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+
+            if (window.IdlixFullscreenChannel) {
+              window.IdlixFullscreenChannel.postMessage('exit');
+            }
+            return false;
+          }
+
+          window.__isIdlixCssFullscreen = true;
+          el.classList.add('idlix-fs-target-element');
+
+          var p = el.parentElement;
+          while (p && p !== document.body && p !== document.documentElement) {
+            p.classList.add('idlix-fs-ancestor-override');
+            p = p.parentElement;
+          }
+
+          document.documentElement.classList.add('idlix-fullscreen-locked');
+          document.body.classList.add('idlix-fullscreen-locked');
+
+          var btn = document.getElementById('idlix-inplayer-fs-btn');
+          if (btn) btn.innerHTML = '⛶ Kecilkan';
+
+          try { el.scrollIntoView({ block: 'start' }); } catch(e) {}
+
+          if (window.IdlixFullscreenChannel) {
+            window.IdlixFullscreenChannel.postMessage('enter');
+          }
+          return true;
+        };
+
+        // 6. Jalankan pemindaian berkala
+        fixAllIframesFullscreen();
+        injectInPlayerFullscreenButton();
+
+        setInterval(function() {
+          fixAllIframesFullscreen();
+          injectInPlayerFullscreenButton();
+        }, 800);
+      })();
+    ''';
+    controller.runJavaScript(script).catchError((_) {});
   }
 
   void _toggleWebVideoPlayPause() {
@@ -345,13 +588,15 @@ class _WebViewPageState extends State<WebViewPage> {
     }
   }
 
-  /// Memeriksa pembaruan aplikasi IDLIX dari GitHub raw
+  /// Memeriksa pembaruan aplikasi IDLIX dari GitHub raw / API
   Future<void> _checkForAppUpdate({bool showFeedback = false}) async {
+    if (_hasShownUpdateDialog && !showFeedback) return;
     try {
       final updateInfo = await _updateService.checkForUpdate();
       if (!mounted) return;
 
       if (updateInfo != null) {
+        _hasShownUpdateDialog = true;
         await AppUpdateDialog.show(
           context: context,
           updateInfo: updateInfo,
@@ -419,6 +664,13 @@ class _WebViewPageState extends State<WebViewPage> {
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
+      ..addJavaScriptChannel(
+        'IdlixFullscreenChannel',
+        onMessageReceived: (JavaScriptMessage message) {
+          final isFs = message.message == 'enter';
+          _onFullscreenStateChanged(isFs);
+        },
+      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
@@ -447,6 +699,9 @@ class _WebViewPageState extends State<WebViewPage> {
               // Injeksi JS untuk mencegah popup window.open dan target="_blank"
               _preventPopupsAndNewWindows(controller);
 
+              // Injeksi JS helper fullscreen untuk iframe, ancestor override, dan tombol player
+              _injectPlayerFullscreenHelper(controller);
+
               // Update judul halaman
               controller.getTitle().then((title) {
                 if (title != null && title.isNotEmpty && mounted) {
@@ -471,6 +726,12 @@ class _WebViewPageState extends State<WebViewPage> {
                 Future.delayed(const Duration(milliseconds: 600), () {
                   if (mounted) _triggerAutoPlay();
                 });
+              }
+
+              // Cek pembaruan aplikasi saat web pertama kali selesai dimuat (jika saat startup belum berhasil)
+              if (!_hasRetriedUpdateCheck && !_hasShownUpdateDialog) {
+                _hasRetriedUpdateCheck = true;
+                _checkForAppUpdate();
               }
             }
           },
@@ -595,6 +856,10 @@ class _WebViewPageState extends State<WebViewPage> {
       });
       return;
     }
+    if (_isCssFullscreenActive) {
+      _togglePlayerFullscreen();
+      return;
+    }
     if (_controller != null) {
       try {
         final isFs = await _controller!.runJavaScriptReturningResult(
@@ -640,10 +905,10 @@ class _WebViewPageState extends State<WebViewPage> {
           children: [
             // Main content wrapped in SafeArea
             SafeArea(
-              top: !widget.isTv && _fullscreenCustomWidget == null,
+              top: !widget.isTv && _fullscreenCustomWidget == null && !_isCssFullscreenActive,
               bottom: false,
-              left: _fullscreenCustomWidget == null,
-              right: _fullscreenCustomWidget == null,
+              left: _fullscreenCustomWidget == null && !_isCssFullscreenActive,
+              right: _fullscreenCustomWidget == null && !_isCssFullscreenActive,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -716,15 +981,16 @@ class _WebViewPageState extends State<WebViewPage> {
                     LoadingOverlay(progress: _loadingProgress),
 
                   // 5. Draggable TV Remote Companion Button (Mobile mode)
-                  if (!widget.isTv && _mobileRemoteService != null && _fullscreenCustomWidget == null)
+                  if (!widget.isTv && _mobileRemoteService != null && _fullscreenCustomWidget == null && !_isCssFullscreenActive)
                     DraggableTvRemoteButton(
                       remoteService: _mobileRemoteService!,
                       getCurrentUrl: () => _currentLoadedUrl.isNotEmpty ? _currentLoadedUrl : (_config?.mainUrl ?? ''),
                       getCurrentTitle: () => _currentLoadedTitle.isNotEmpty ? _currentLoadedTitle : 'IDLIX Film',
+                      onCheckUpdate: () => _checkForAppUpdate(showFeedback: true),
                     ),
 
                   // 6b. TV Remote Menu Shortcut Button
-                  if (widget.isTv && _fullscreenCustomWidget == null)
+                  if (widget.isTv && _fullscreenCustomWidget == null && !_isCssFullscreenActive)
                     Positioned(
                       top: 12,
                       left: 12,

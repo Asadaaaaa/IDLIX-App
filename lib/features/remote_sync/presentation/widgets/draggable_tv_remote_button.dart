@@ -7,12 +7,14 @@ class DraggableTvRemoteButton extends StatefulWidget {
   final MobileRemoteService remoteService;
   final String Function() getCurrentUrl;
   final String Function() getCurrentTitle;
+  final VoidCallback? onCheckUpdate;
 
   const DraggableTvRemoteButton({
     super.key,
     required this.remoteService,
     required this.getCurrentUrl,
     required this.getCurrentTitle,
+    this.onCheckUpdate,
   });
 
   @override
@@ -49,6 +51,7 @@ class _DraggableTvRemoteButtonState extends State<DraggableTvRemoteButton> {
                     remoteService: widget.remoteService,
                     currentUrl: widget.getCurrentUrl(),
                     currentTitle: widget.getCurrentTitle(),
+                    onCheckUpdate: widget.onCheckUpdate,
                   );
                 },
                 borderRadius: BorderRadius.circular(30),

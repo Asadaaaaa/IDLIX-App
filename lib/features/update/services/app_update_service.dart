@@ -5,8 +5,8 @@ import 'package:webview_domain_lock/core/services/remote_config_service.dart';
 import 'package:webview_domain_lock/features/update/models/app_update_info.dart';
 
 class AppUpdateService {
-  static const String currentVersion = '2.1.0';
-  static const int currentVersionCode = 26;
+  static const String currentVersion = '2.1.1';
+  static const int currentVersionCode = 27;
 
   static const MethodChannel _channel = MethodChannel('com.idlix.app/installer');
   final HttpClient _httpClient;
@@ -14,16 +14,20 @@ class AppUpdateService {
   AppUpdateService({HttpClient? httpClient})
       : _httpClient = httpClient ?? (HttpClient()..connectionTimeout = const Duration(seconds: 10));
 
-  /// Memeriksa ke file config.json di GitHub apakah ada versi baru
+  /// Memeriksa ke file config.json di GitHub atau GitHub Releases API apakah ada versi baru
   Future<AppUpdateInfo?> checkForUpdate() async {
+    // 1. Coba endpoint config.json dengan cache-busting timestamp agar tidak terkena cache CDN
     for (final endpoint in RemoteConfigService.configEndpoints) {
       try {
-        final uri = Uri.parse(endpoint);
+        final cacheBuster = DateTime.now().millisecondsSinceEpoch;
+        final separator = endpoint.contains('?') ? '&' : '?';
+        final uri = Uri.parse('$endpoint${separator}_t=$cacheBuster');
         final request = await _httpClient.getUrl(uri);
         request.headers.set('User-Agent', 'IDLIX-App/$currentVersion');
-        request.headers.set('Cache-Control', 'no-cache');
+        request.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+        request.headers.set('Pragma', 'no-cache');
 
-        final response = await request.close().timeout(const Duration(seconds: 8));
+        final response = await request.close().timeout(const Duration(seconds: 6));
         if (response.statusCode == 200) {
           final body = await response.transform(utf8.decoder).join();
           final data = jsonDecode(body) as Map<String, dynamic>;
@@ -38,6 +42,48 @@ class AppUpdateService {
         continue;
       }
     }
+
+    // 2. Fallback: Coba GitHub API resmi yang tidak pernah terkena blokir DNS/cache CDN
+    try {
+      final apiUri = Uri.parse('https://api.github.com/repos/Asadaaaaa/IDLIX-App/releases/latest');
+      final request = await _httpClient.getUrl(apiUri);
+      request.headers.set('User-Agent', 'IDLIX-App/$currentVersion');
+      request.headers.set('Accept', 'application/vnd.github.v3+json');
+
+      final response = await request.close().timeout(const Duration(seconds: 6));
+      if (response.statusCode == 200) {
+        final body = await response.transform(utf8.decoder).join();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final tagName = (data['tag_name'] as String? ?? '').replaceFirst('v', '').trim();
+        final releaseNotes = data['body'] as String? ?? 'Pembaruan aplikasi IDLIX versi terbaru tersedia.';
+
+        if (tagName.isNotEmpty && tagName != currentVersion && _isNewerVersion(tagName, currentVersion)) {
+          var mobileUrl = 'https://github.com/Asadaaaaa/IDLIX-App/releases/download/v$tagName/IDLIX.apk';
+          var tvUrl = 'https://github.com/Asadaaaaa/IDLIX-App/releases/download/v$tagName/IDLIX-TV.apk';
+
+          final assets = data['assets'] as List<dynamic>?;
+          if (assets != null) {
+            for (final asset in assets) {
+              final name = asset['name']?.toString() ?? '';
+              final url = asset['browser_download_url']?.toString();
+              if (url != null) {
+                if (name == 'IDLIX.apk') mobileUrl = url;
+                if (name == 'IDLIX-TV.apk') tvUrl = url;
+              }
+            }
+          }
+
+          return AppUpdateInfo(
+            version: tagName,
+            versionCode: currentVersionCode + 1,
+            releaseNotes: releaseNotes,
+            mobileApkUrl: mobileUrl,
+            tvApkUrl: tvUrl,
+          );
+        }
+      }
+    } catch (_) {}
+
     return null;
   }
 
