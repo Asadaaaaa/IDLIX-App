@@ -3,9 +3,9 @@
   "allowed_host": "idlixku.com",
   "name": "IDLIX",
   "updated_at": "2026-09-13",
-  "latest_version": "1.9.0",
-  "latest_version_code": 19,
-  "release_notes": "1. Enhanced Movie Detection: Android WebView onLoadResource hook reliably captures iframe HLS (.m3u8) streams and subtitles.\n2. Ad & Betting Sponsor Filter: Completely blocks asia9sports.com and pre-roll ads from casting.\n3. In-Player Controls: Floating Cast and Fullscreen buttons directly on the player container with TV remote support.\n4. Fixed Player Fullscreen: Keeps WebView active and injects iframe fullscreen permissions.\n5. Refined TV Navigation: Curated selection for movie cards, banners, navbar, and action buttons without clutter.",
-  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.0/IDLIX.apk",
-  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.0/IDLIX-TV.apk"
+  "latest_version": "1.9.1",
+  "latest_version_code": 20,
+  "release_notes": "1. Fixed App Launch Black Screen: Resolved initialization and layout constraints to guarantee instant fullscreen display.\n2. Splash Screen Timeout Fallback: Guaranteed 3-second transition to prevent getting stuck on startup.\n3. Enhanced Player Fullscreen & TV Navigation: Smooth controls, Netflix-style TV D-Pad focus, and aggressive betting ad blocker.",
+  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.1/IDLIX.apk",
+  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.1/IDLIX-TV.apk"
 }

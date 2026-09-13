@@ -5,8 +5,8 @@ import 'package:webview_domain_lock/core/services/remote_config_service.dart';
 import 'package:webview_domain_lock/features/update/models/app_update_info.dart';
 
 class AppUpdateService {
-  static const String currentVersion = '1.9.0';
-  static const int currentVersionCode = 19;
+  static const String currentVersion = '1.9.1';
+  static const int currentVersionCode = 20;
 
   static const MethodChannel _channel = MethodChannel('com.idlix.app/installer');
   final HttpClient _httpClient;

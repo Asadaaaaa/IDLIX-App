@@ -10,10 +10,10 @@ Choose the APK version made for your device:
 
 | Device | App Version | Download Link | Features |
 |---|---|---|---|
-| 📱 **Phone & Tablet** | **IDLIX** | [**Download IDLIX.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.0/IDLIX.apk) | Fullscreen edge-to-edge viewing, touch controls, video casting with subtitles |
-| 📺 **Android TV & STB Box** | **IDLIX TV** | [**Download IDLIX-TV.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.0/IDLIX-TV.apk) | Works with your TV remote, Netflix-style element selection, auto-scrolling, big-screen zoom |
+| 📱 **Phone & Tablet** | **IDLIX** | [**Download IDLIX.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.1/IDLIX.apk) | Fullscreen edge-to-edge viewing, touch controls, video casting with subtitles |
+| 📺 **Android TV & STB Box** | **IDLIX TV** | [**Download IDLIX-TV.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.1/IDLIX-TV.apk) | Works with your TV remote, Netflix-style element selection, auto-scrolling, big-screen zoom |
 
-- **Latest Release:** [IDLIX-App v1.9.0 on GitHub](https://github.com/Asadaaaaa/IDLIX-App/releases/tag/v1.9.0)
+- **Latest Release:** [IDLIX-App v1.9.1 on GitHub](https://github.com/Asadaaaaa/IDLIX-App/releases/tag/v1.9.1)
 - **Works on:** Android 5.0 or higher.
 
 ---

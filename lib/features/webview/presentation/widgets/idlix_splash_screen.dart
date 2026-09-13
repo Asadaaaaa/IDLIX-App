@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class IdlixSplashScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _IdlixSplashScreenState extends State<IdlixSplashScreen>
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
   bool _canDismiss = false;
+  Timer? _fallbackTimer;
 
   @override
   void initState() {
@@ -54,6 +56,13 @@ class _IdlixSplashScreenState extends State<IdlixSplashScreen>
         }
       }
     });
+
+    // Fallback maximum duration to guarantee splash dismisses even on slow network
+    _fallbackTimer = Timer(const Duration(milliseconds: 3000), () {
+      if (mounted) {
+        widget.onDismissed?.call();
+      }
+    });
   }
 
   @override
@@ -66,6 +75,7 @@ class _IdlixSplashScreenState extends State<IdlixSplashScreen>
 
   @override
   void dispose() {
+    _fallbackTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }

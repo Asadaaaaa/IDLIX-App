@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
-// ignore: implementation_imports
-import 'package:webview_flutter_android/src/android_webkit.g.dart' as android_webkit;
 import 'package:webview_domain_lock/core/services/storage_service.dart';
 import 'package:webview_domain_lock/features/cast/presentation/widgets/cast_modal_bottom_sheet.dart';
 import 'package:webview_domain_lock/features/cast/presentation/widgets/draggable_cast_button.dart';
@@ -73,7 +71,6 @@ class _WebViewPageState extends State<WebViewPage> {
     _updateService = AppUpdateService();
     _dnsService = DnsService();
     _config = widget.initialConfig;
-    _setupAndroidWebViewClientHook();
     _castManager.sessionStateNotifier.addListener(_syncCastStatusToWeb);
 
     if (widget.isTv) {
@@ -150,55 +147,6 @@ class _WebViewPageState extends State<WebViewPage> {
     _tvRemoteController?.dispose();
     _castManager.stopDiscovery();
     super.dispose();
-  }
-
-  void _setupAndroidWebViewClientHook() {
-    try {
-      // ignore: invalid_use_of_visible_for_testing_member
-      android_webkit.PigeonOverrides.webViewClient_new = ({
-        onPageStarted,
-        onPageFinished,
-        onReceivedHttpError,
-        onReceivedRequestError,
-        onReceivedRequestErrorCompat,
-        requestLoading,
-        urlLoading,
-        doUpdateVisitedHistory,
-        onReceivedHttpAuthRequest,
-        onFormResubmission,
-        onLoadResource,
-        onPageCommitVisible,
-        onReceivedClientCertRequest,
-        onReceivedLoginRequest,
-        onReceivedSslError,
-        onScaleChanged,
-      }) {
-        // ignore: invalid_use_of_protected_member
-        return android_webkit.WebViewClient.pigeon_new(
-          onPageStarted: onPageStarted,
-          onPageFinished: onPageFinished,
-          onReceivedHttpError: onReceivedHttpError,
-          onReceivedRequestError: onReceivedRequestError,
-          onReceivedRequestErrorCompat: onReceivedRequestErrorCompat,
-          requestLoading: requestLoading,
-          urlLoading: urlLoading,
-          doUpdateVisitedHistory: doUpdateVisitedHistory,
-          onReceivedHttpAuthRequest: onReceivedHttpAuthRequest,
-          onFormResubmission: onFormResubmission,
-          onLoadResource: (client, view, url) {
-            onLoadResource?.call(client, view, url);
-            _videoDetectorService.inspectNetworkUrl(url);
-          },
-          onPageCommitVisible: onPageCommitVisible,
-          onReceivedClientCertRequest: onReceivedClientCertRequest,
-          onReceivedLoginRequest: onReceivedLoginRequest,
-          onReceivedSslError: onReceivedSslError,
-          onScaleChanged: onScaleChanged,
-        );
-      };
-    } catch (e) {
-      debugPrint('WebViewClient hook setup error: $e');
-    }
   }
 
   void _syncCastStatusToWeb() {
@@ -344,7 +292,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
+      ..setBackgroundColor(Colors.black)
       ..addJavaScriptChannel(
         'VideoDetectorChannel',
         onMessageReceived: (JavaScriptMessage message) {
@@ -566,6 +514,7 @@ class _WebViewPageState extends State<WebViewPage> {
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
+          fit: StackFit.expand,
           children: [
             // Main content wrapped in SafeArea
             SafeArea(
@@ -574,12 +523,11 @@ class _WebViewPageState extends State<WebViewPage> {
               left: _fullscreenCustomWidget == null,
               right: _fullscreenCustomWidget == null,
               child: Stack(
+                fit: StackFit.expand,
                 children: [
                   // 1. Main WebView (always kept alive in widget tree)
                   if (_controller != null && !_hasError)
-                    Positioned.fill(
-                      child: WebViewWidget(controller: _controller!),
-                    ),
+                    WebViewWidget(controller: _controller!),
 
                   // 2. Fullscreen Custom HTML5 Video Widget (rendered on top)
                   if (_fullscreenCustomWidget != null)
