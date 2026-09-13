@@ -67,6 +67,11 @@ void main() {
       expect(DomainUtils.isBlockedAdDomain('https://securepubads.g.doubleclick.net/gpt.js'), isTrue);
       expect(DomainUtils.isBlockedAdDomain('https://googlesyndication.com/banner'), isTrue);
       expect(DomainUtils.isBlockedAdDomain('https://taboola.com/widget'), isTrue);
+      expect(DomainUtils.isBlockedAdDomain('https://asia9sports.com/video/ad.mp4'), isTrue);
+      expect(DomainUtils.isBlockedAdDomain('https://cdn.asia9sports.com/sponsor.mp4'), isTrue);
+      expect(DomainUtils.isBlockedAdDomain('https://sbobet.com/banner'), isTrue);
+      expect(DomainUtils.isBlockedAdDomain('https://mposport.com/promo'), isTrue);
+      expect(DomainUtils.isBlockedAdDomain('https://monetag.com/tag'), isTrue);
       expect(DomainUtils.isBlockedAdDomain('https://example.com/script.js'), isFalse);
     });
   });

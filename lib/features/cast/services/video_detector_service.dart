@@ -15,6 +15,33 @@ class VideoDetectorService {
   List<DetectedSubtitle> get standaloneSubtitles =>
       standaloneSubtitlesNotifier.value;
 
+  String currentPageUrl = '';
+  String currentPageTitle = '';
+
+  /// Update URL halaman saat ini untuk referer cast
+  void updateCurrentPage(String url) {
+    currentPageUrl = url;
+  }
+
+  /// Update judul halaman saat ini untuk penamaan video yang terdeteksi
+  void updatePageTitle(String title) {
+    currentPageTitle = title.trim();
+    if (currentPageTitle.isEmpty) return;
+
+    final currentList = List<DetectedVideo>.from(detectedVideosNotifier.value);
+    var updated = false;
+    for (var i = 0; i < currentList.length; i++) {
+      final v = currentList[i];
+      if (v.title == 'Web Video' || v.title == 'IDLIX Stream' || v.title.isEmpty) {
+        currentList[i] = v.copyWith(title: currentPageTitle);
+        updated = true;
+      }
+    }
+    if (updated) {
+      detectedVideosNotifier.value = currentList;
+    }
+  }
+
   /// Returns the highest quality/priority main movie stream (excluding ads)
   DetectedVideo? getBestVideo() {
     if (detectedVideos.isEmpty) return null;
@@ -28,6 +55,131 @@ class VideoDetectorService {
   void clear() {
     detectedVideosNotifier.value = [];
     standaloneSubtitlesNotifier.value = [];
+  }
+
+  /// Memeriksa URL yang dimuat oleh WebView di level jaringan / WebViewClient.onLoadResource
+  /// Mampu menangkap m3u8 / mp4 / vtt di dalam iframe cross-origin sekalipun!
+  void inspectNetworkUrl(String url, {String? pageTitle, String? referer}) {
+    if (url.trim().isEmpty) return;
+    final trimmedUrl = url.trim();
+    final lower = trimmedUrl.toLowerCase();
+
+    // 1. Abaikan blob, data, dan javascript URLs
+    if (lower.startsWith('blob:') ||
+        lower.startsWith('data:') ||
+        lower.startsWith('javascript:')) {
+      return;
+    }
+
+    // 2. Blokir domain iklan dan URL sponsor judi (asia9, sbobet, mpo, dsb.)
+    if (DomainUtils.isBlockedAdDomain(trimmedUrl)) {
+      return;
+    }
+    const adKeywords = [
+      'asia9',
+      'sbobet',
+      'mposport',
+      'judionline',
+      'monetag',
+      'highcpm',
+      'slot',
+      'casino',
+      'betting',
+      '/ad/',
+      '/ads/',
+      '/advert',
+      'preroll',
+      'pre-roll',
+      'midroll',
+      'postroll',
+      'vast',
+      'vpaid',
+      'ima3',
+      'imasdk',
+      'popads',
+      'adsterra',
+      'propeller',
+      'doubleclick',
+      'googlesyndication',
+      'adsystem',
+      'adservice',
+    ];
+    for (final kw in adKeywords) {
+      if (lower.contains(kw)) return;
+    }
+
+    final cleanUrl = lower.split('?').first;
+
+    // 3. Deteksi Subtitle (.vtt, .srt)
+    final isSubtitle = cleanUrl.endsWith('.vtt') ||
+        cleanUrl.endsWith('.srt') ||
+        cleanUrl.endsWith('.sub') ||
+        lower.contains('.vtt?') ||
+        lower.contains('.srt?') ||
+        lower.contains('/subtitles/') ||
+        lower.contains('/sub/');
+
+    if (isSubtitle) {
+      String label = 'Subtitle';
+      String lang = 'auto';
+      if (lower.contains('indonesia') ||
+          lower.contains('_id') ||
+          lower.contains('-id') ||
+          lower.contains('ind') ||
+          lower.contains('indo')) {
+        label = 'Indonesian';
+        lang = 'id';
+      } else if (lower.contains('english') ||
+          lower.contains('_en') ||
+          lower.contains('-en') ||
+          lower.contains('eng')) {
+        label = 'English';
+        lang = 'en';
+      }
+      _addSubtitle(DetectedSubtitle(url: trimmedUrl, label: label, lang: lang));
+      return;
+    }
+
+    // 4. Deteksi Video Stream (.m3u8, /hls/, .mp4, .webm, .mpd)
+    final isVideo = cleanUrl.endsWith('.m3u8') ||
+        cleanUrl.endsWith('.mpd') ||
+        cleanUrl.endsWith('.mp4') ||
+        cleanUrl.endsWith('.webm') ||
+        cleanUrl.endsWith('.mkv') ||
+        lower.contains('.m3u8') ||
+        lower.contains('/hls/');
+
+    if (isVideo) {
+      // Filter file chunk / segmen video agar tidak memenuhi daftar
+      if (cleanUrl.endsWith('.ts') ||
+          cleanUrl.endsWith('.m4s') ||
+          cleanUrl.contains('segment') ||
+          cleanUrl.contains('frag') ||
+          cleanUrl.contains('/chunk')) {
+        return;
+      }
+
+      final title = (pageTitle != null && pageTitle.isNotEmpty)
+          ? pageTitle
+          : (currentPageTitle.isNotEmpty
+              ? currentPageTitle
+              : 'IDLIX Stream');
+
+      final headers = <String, String>{};
+      final ref = referer ?? (currentPageUrl.isNotEmpty ? currentPageUrl : null);
+      if (ref != null && ref.isNotEmpty) {
+        headers['Referer'] = ref;
+      }
+
+      _addOrUpdateVideo(
+        DetectedVideo(
+          url: trimmedUrl,
+          title: title,
+          subtitles: standaloneSubtitles,
+          headers: headers,
+        ),
+      );
+    }
   }
 
   /// Menangani pesan dari JavaScriptChannel WebView
@@ -169,7 +321,8 @@ class VideoDetectorService {
             'vast', 'vpaid', 'ima3', 'imasdk', 'doubleclick', 'googlesyndication',
             'popads', 'adsterra', 'propeller', 'adnxs', 'commercial', 'sponsor',
             'promo_', 'spotx', 'teads', 'outbrain', 'taboola', 'springserve',
-            'videology', 'adsystem', 'adservice'
+            'videology', 'adsystem', 'adservice', 'asia9', 'sbobet', 'mposport',
+            'judionline', 'monetag', 'highcpm', 'slot', 'casino', 'betting'
           ];
           for (var i = 0; i < adKeywords.length; i++) {
             if (u.indexOf(adKeywords[i]) !== -1) return true;
@@ -179,8 +332,8 @@ class VideoDetectorService {
 
         function isAdVideoElement(v) {
           if (!v) return true;
-          // Pre-roll ads are almost always <= 65 seconds
-          if (v.duration && v.duration > 0 && v.duration <= 65) return true;
+          // Pre-roll ads are almost always <= 75 seconds
+          if (v.duration && v.duration > 0 && v.duration <= 75) return true;
 
           // Check if parent container has ad markers
           var p = v.closest(
@@ -268,6 +421,34 @@ class VideoDetectorService {
           return origOpen.apply(this, arguments);
         };
 
+        // 3. Intercept Hls.js (jika player menggunakan Hls library)
+        try {
+          if (window.Hls && window.Hls.prototype && window.Hls.prototype.loadSource) {
+            var origHls = window.Hls.prototype.loadSource;
+            window.Hls.prototype.loadSource = function(src) {
+              inspectUrl(src);
+              return origHls.apply(this, arguments);
+            };
+          }
+        } catch(e) {}
+
+        // 4. Intercept HTMLMediaElement.src
+        try {
+          var origSrcDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+          if (origSrcDesc && origSrcDesc.set) {
+            var origSetSrc = origSrcDesc.set;
+            Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+              configurable: true,
+              enumerable: true,
+              get: origSrcDesc.get,
+              set: function(val) {
+                try { inspectUrl(val); } catch(e) {}
+                return origSetSrc.call(this, val);
+              }
+            });
+          }
+        } catch(e) {}
+
         function inspectUrl(url) {
           if (!url || typeof url !== 'string') return;
           if (isAdUrl(url)) return;
@@ -283,7 +464,7 @@ class VideoDetectorService {
                         url.indexOf('/hls/') !== -1;
 
           if (isVideo) {
-            if (clean.indexOf('.ts') === -1 && clean.indexOf('segment') === -1 && clean.indexOf('frag') === -1) {
+            if (clean.indexOf('.ts') === -1 && clean.indexOf('segment') === -1 && clean.indexOf('frag') === -1 && clean.indexOf('.m4s') === -1) {
               reportVideo(url, document.title, [], null);
             }
           }
@@ -291,6 +472,7 @@ class VideoDetectorService {
           // Deteksi subtitle WebVTT atau SRT
           var isSubtitle = clean.endsWith('.vtt') || 
                            clean.endsWith('.srt') || 
+                           clean.endsWith('.sub') ||
                            url.indexOf('.vtt?') !== -1 || 
                            url.indexOf('.srt?') !== -1 ||
                            url.indexOf('/subtitles/') !== -1 ||
@@ -300,7 +482,7 @@ class VideoDetectorService {
             var lower = url.toLowerCase();
             var label = 'Subtitle';
             var lang = 'auto';
-            if (lower.indexOf('indonesia') !== -1 || lower.indexOf('_id') !== -1 || lower.indexOf('-id') !== -1 || lower.indexOf('ind') !== -1) {
+            if (lower.indexOf('indonesia') !== -1 || lower.indexOf('_id') !== -1 || lower.indexOf('-id') !== -1 || lower.indexOf('ind') !== -1 || lower.indexOf('indo') !== -1) {
               label = 'Indonesian';
               lang = 'id';
             } else if (lower.indexOf('english') !== -1 || lower.indexOf('_en') !== -1 || lower.indexOf('-en') !== -1 || lower.indexOf('eng') !== -1) {
@@ -357,14 +539,205 @@ class VideoDetectorService {
           checkAndReport();
         }
 
-        // 3. Scan DOM untuk tag <video>, <source>, <track>, dan iframes
+        // 5. Perbaiki izin Fullscreen untuk semua iframe di halaman
+        function fixIframeFullscreen() {
+          try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var i = 0; i < iframes.length; i++) {
+              var ifr = iframes[i];
+              if (!ifr.hasAttribute('allowfullscreen')) {
+                ifr.setAttribute('allowfullscreen', 'true');
+              }
+              ifr.setAttribute('webkitallowfullscreen', 'true');
+              ifr.setAttribute('mozallowfullscreen', 'true');
+              var currentAllow = ifr.getAttribute('allow') || '';
+              if (currentAllow.indexOf('fullscreen') === -1) {
+                ifr.setAttribute('allow', (currentAllow ? currentAllow + '; ' : '') + 'fullscreen; autoplay; encrypted-media; picture-in-picture');
+              }
+            }
+          } catch(e) {}
+        }
+
+        // 6. Injeksi Kontrol In-Player (Cast & Fullscreen) Langsung di Atas Player
+        function findStreamContainer() {
+          return document.getElementById('embed-holder') ||
+                 document.getElementById('player') ||
+                 document.querySelector('.player-embed') ||
+                 document.querySelector('.player-large') ||
+                 document.querySelector('.play-wrapper') ||
+                 document.querySelector('.embed-responsive') ||
+                 document.querySelector('iframe[src*="embed"]') ||
+                 document.querySelector('iframe[src*="player"]') ||
+                 document.querySelector('iframe[src*="stream"]') ||
+                 document.querySelector('iframe') ||
+                 document.querySelector('video');
+        }
+
+        function togglePlayerFullscreen() {
+          var container = findStreamContainer();
+          if (!container) return;
+
+          // Jika sedang fullscreen (HTML5 atau CSS), keluar
+          if (document.fullscreenElement || document.webkitFullscreenElement || window.__isCssFullscreen) {
+            if (document.exitFullscreen) {
+              document.exitFullscreen().catch(function() {});
+            } else if (document.webkitExitFullscreen) {
+              document.webkitExitFullscreen();
+            }
+            exitCssFullscreen();
+            return;
+          }
+
+          // Coba request fullscreen HTML5 standar
+          var rfs = container.requestFullscreen || container.webkitRequestFullscreen || container.mozRequestFullScreen;
+          if (rfs) {
+            rfs.call(container).catch(function() {
+              // Jika container ditolak, coba elemen video langsung
+              try {
+                var v = container.querySelector('video') || document.querySelector('video');
+                if (v && (v.requestFullscreen || v.webkitEnterFullscreen)) {
+                  if (v.webkitEnterFullscreen) v.webkitEnterFullscreen();
+                  else v.requestFullscreen();
+                  return;
+                }
+              } catch(err) {}
+              enterCssFullscreen(container);
+            });
+          } else {
+            enterCssFullscreen(container);
+          }
+        }
+
+        function enterCssFullscreen(container) {
+          window.__isCssFullscreen = true;
+          container.dataset.origStyle = container.getAttribute('style') || '';
+          container.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483646 !important; background: #000 !important; margin: 0 !important; padding: 0 !important; border: none !important;';
+          var ifr = container.querySelector('iframe');
+          if (ifr) {
+            ifr.dataset.origStyle = ifr.getAttribute('style') || '';
+            ifr.style.cssText = 'width: 100% !important; height: 100% !important; border: none !important;';
+          }
+          var fsText = document.getElementById('idlix-fs-btn-text');
+          if (fsText) fsText.textContent = 'Kecilkan';
+        }
+
+        function exitCssFullscreen() {
+          window.__isCssFullscreen = false;
+          var container = findStreamContainer();
+          if (!container) return;
+          if (container.dataset.origStyle !== undefined) {
+            container.style.cssText = container.dataset.origStyle;
+          }
+          var ifr = container.querySelector('iframe');
+          if (ifr && ifr.dataset.origStyle !== undefined) {
+            ifr.style.cssText = ifr.dataset.origStyle;
+          }
+          var fsText = document.getElementById('idlix-fs-btn-text');
+          if (fsText) fsText.textContent = 'Layar Penuh';
+        }
+
+        window.__exitPlayerFullscreen = function() {
+          if (window.__isCssFullscreen) {
+            exitCssFullscreen();
+            return true;
+          }
+          if (document.fullscreenElement || document.webkitFullscreenElement) {
+            if (document.exitFullscreen) document.exitFullscreen().catch(function() {});
+            else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+            return true;
+          }
+          return false;
+        };
+
+        function injectInPlayerControls() {
+          if (document.getElementById('idlix-inplayer-controls-bar')) return;
+
+          var container = findStreamContainer();
+          if (!container) return;
+
+          var parent = container.parentElement || container;
+          if (window.getComputedStyle(parent).position === 'static') {
+            parent.style.position = 'relative';
+          }
+
+          var bar = document.createElement('div');
+          bar.id = 'idlix-inplayer-controls-bar';
+          bar.className = 'idlix-inplayer-controls-bar';
+          bar.style.cssText = 'position: absolute; top: 12px; right: 12px; z-index: 2147483647; display: inline-flex; align-items: center; gap: 8px; user-select: none;';
+
+          // 1. Tombol Cast
+          var castBtn = document.createElement('div');
+          castBtn.id = 'idlix-inplayer-cast-btn';
+          castBtn.className = 'idlix-inplayer-cast-btn btn';
+          castBtn.setAttribute('tabindex', '0');
+          castBtn.setAttribute('role', 'button');
+          castBtn.setAttribute('aria-label', 'Cast Video ke TV');
+          castBtn.title = 'Cast ke TV (Chromecast & DLNA)';
+          castBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"></path><line x1="2" y1="20" x2="2.01" y2="20"></line></svg><span id="idlix-cast-btn-text">Cast ke TV</span>';
+          castBtn.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; background: rgba(18, 18, 18, 0.90); color: #FFFFFF; border: 1.5px solid #E50914; border-radius: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6), 0 0 10px rgba(229, 9, 20, 0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);';
+
+          function triggerCast() {
+            castBtn.style.transform = 'scale(0.92)';
+            setTimeout(function() { castBtn.style.transform = ''; }, 120);
+            if (window.VideoDetectorChannel) {
+              window.VideoDetectorChannel.postMessage(JSON.stringify({ type: 'open_cast_dialog' }));
+            }
+          }
+          castBtn.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); triggerCast(); });
+          castBtn.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.keyCode === 13 || e.key === ' ') { e.stopPropagation(); e.preventDefault(); triggerCast(); } });
+
+          // 2. Tombol Layar Penuh (Fullscreen)
+          var fsBtn = document.createElement('div');
+          fsBtn.id = 'idlix-inplayer-fs-btn';
+          fsBtn.className = 'idlix-inplayer-fs-btn btn';
+          fsBtn.setAttribute('tabindex', '0');
+          fsBtn.setAttribute('role', 'button');
+          fsBtn.setAttribute('aria-label', 'Layar Penuh');
+          fsBtn.title = 'Layar Penuh (Fullscreen)';
+          fsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg><span id="idlix-fs-btn-text">Layar Penuh</span>';
+          fsBtn.style.cssText = 'display: inline-flex; align-items: center; gap: 6px; padding: 7px 13px; background: rgba(18, 18, 18, 0.90); color: #FFFFFF; border: 1.5px solid #555555; border-radius: 24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);';
+
+          function triggerFs() {
+            fsBtn.style.transform = 'scale(0.92)';
+            setTimeout(function() { fsBtn.style.transform = ''; }, 120);
+            togglePlayerFullscreen();
+          }
+          fsBtn.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); triggerFs(); });
+          fsBtn.addEventListener('keydown', function(e) { if (e.key === 'Enter' || e.keyCode === 13 || e.key === ' ') { e.stopPropagation(); e.preventDefault(); triggerFs(); } });
+
+          bar.appendChild(castBtn);
+          bar.appendChild(fsBtn);
+          parent.appendChild(bar);
+        }
+
+        window.__updateCastStatus = function(isCasting) {
+          var btn = document.getElementById('idlix-inplayer-cast-btn');
+          var text = document.getElementById('idlix-cast-btn-text');
+          if (!btn) return;
+          if (isCasting) {
+            btn.style.background = 'rgba(46, 125, 50, 0.92)';
+            btn.style.borderColor = '#4CAF50';
+            btn.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.6), 0 0 12px rgba(76, 175, 80, 0.6)';
+            if (text) text.textContent = 'Casting Aktif 📡';
+          } else {
+            btn.style.background = 'rgba(18, 18, 18, 0.90)';
+            btn.style.borderColor = '#E50914';
+            btn.style.boxShadow = '0 4px 14px rgba(0, 0, 0, 0.6), 0 0 10px rgba(229, 9, 20, 0.4)';
+            if (text) text.textContent = 'Cast ke TV';
+          }
+        };
+
+        // 7. Scan DOM untuk tag <video>, <source>, <track>, dan iframes
         function scanMediaElements() {
+          fixIframeFullscreen();
+          injectInPlayerControls();
+
           var videos = document.querySelectorAll('video');
           for (var i = 0; i < videos.length; i++) {
             hookVideoElement(videos[i]);
           }
 
-          // 4. Hook dan periksa JWPlayer
+          // 7. Hook dan periksa JWPlayer
           try {
             if (window.jwplayer && typeof window.jwplayer === 'function') {
               var jw = window.jwplayer();
@@ -419,7 +792,7 @@ class VideoDetectorService {
             }
           } catch(e) {}
 
-          // 5. Periksa VideoJS
+          // 8. Periksa VideoJS
           try {
             if (window.videojs && window.videojs.getPlayers) {
               var players = window.videojs.getPlayers();
@@ -435,7 +808,7 @@ class VideoDetectorService {
             }
           } catch(e) {}
 
-          // 6. Periksa iframe embeds yang mengarah ke streaming/player
+          // 9. Periksa iframe embeds yang mengarah ke streaming/player
           try {
             var iframes = document.querySelectorAll('iframe');
             for (var ifr = 0; ifr < iframes.length; ifr++) {
@@ -455,7 +828,7 @@ class VideoDetectorService {
           } catch(e) {}
         }
 
-        // 7. Deteksi klik pada tombol "Skip Ad" / "Lewati Iklan" di seluruh halaman
+        // 10. Deteksi klik pada tombol "Skip Ad" / "Lewati Iklan" di seluruh halaman
         document.addEventListener('click', function(e) {
           var target = e.target;
           if (!target) return;
@@ -480,9 +853,10 @@ class VideoDetectorService {
           setTimeout(scanMediaElements, 300);
         }, true);
 
-        // Scan awal
+        // Scan berkala
         setTimeout(scanMediaElements, 1000);
-        setTimeout(scanMediaElements, 3000);
+        setTimeout(scanMediaElements, 2500);
+        setTimeout(scanMediaElements, 5000);
       })();
     ''';
   }

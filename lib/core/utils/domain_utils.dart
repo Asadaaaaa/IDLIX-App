@@ -51,6 +51,20 @@ class DomainUtils {
     final host = uri?.host.toLowerCase().trim();
     if (host == null || host.isEmpty) return false;
 
+    // Cek kata kunci domain sponsor judi / taruhan / ad network streaming
+    if (host.contains('asia9') ||
+        host.contains('sbobet') ||
+        host.contains('mposport') ||
+        host.contains('adsterra') ||
+        host.contains('monetag') ||
+        host.contains('highcpm') ||
+        host.contains('popads') ||
+        host.contains('propeller') ||
+        host.contains('doubleclick') ||
+        host.contains('judionline')) {
+      return true;
+    }
+
     for (final adDomain in adBlockedDomains) {
       final cleanAd = adDomain.toLowerCase().trim();
       if (host == cleanAd || host.endsWith('.$cleanAd')) {

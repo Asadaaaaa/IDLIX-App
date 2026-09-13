@@ -206,6 +206,36 @@ void main() {
       expect(best.isHls, isTrue);
       expect(service.detectedVideos.first.title, 'The Mentalist S07E01');
     });
+
+    test('inspectNetworkUrl detects iframe video streams and subtitles, blocks betting ads', () {
+      service.updateCurrentPage('https://z2.idlixku.com/series/the-mentalist-2008/season/7/episode/1');
+      service.updatePageTitle('The Mentalist Season 7 Episode 1 - IDLIX');
+
+      // 1. Pre-roll betting ad from asia9sports.com -> MUST BE BLOCKED
+      service.inspectNetworkUrl('https://video.asia9sports.com/sponsor/preroll_asia9.mp4');
+      service.inspectNetworkUrl('https://asia9sports.com/video.m3u8');
+      expect(service.detectedVideos, isEmpty);
+
+      // 2. Subtitle loaded by iframe player
+      service.inspectNetworkUrl('https://player.provider.xyz/subtitles/indonesian_vtt.vtt?token=xyz');
+      expect(service.standaloneSubtitles.length, 1);
+      expect(service.standaloneSubtitles.first.label, 'Indonesian');
+
+      // 3. Main movie HLS stream loaded by iframe player
+      service.inspectNetworkUrl('https://edge.provider.xyz/hls/the-mentalist-s07e01/master.m3u8?token=abc');
+      expect(service.detectedVideos.length, 1);
+      final video = service.detectedVideos.first;
+      expect(video.url, 'https://edge.provider.xyz/hls/the-mentalist-s07e01/master.m3u8?token=abc');
+      expect(video.title, 'The Mentalist Season 7 Episode 1 - IDLIX');
+      expect(video.subtitles.length, 1);
+      expect(video.subtitles.first.label, 'Indonesian');
+      expect(video.headers['Referer'], 'https://z2.idlixku.com/series/the-mentalist-2008/season/7/episode/1');
+
+      // 4. Chunk .ts and .m4s fragments -> MUST BE IGNORED
+      service.inspectNetworkUrl('https://edge.provider.xyz/hls/the-mentalist-s07e01/segment-01.ts');
+      service.inspectNetworkUrl('https://edge.provider.xyz/hls/the-mentalist-s07e01/frag-1.m4s');
+      expect(service.detectedVideos.length, 1); // Still only the master playlist!
+    });
   });
 
   group('Navigation with Subframe Video Embeds', () {

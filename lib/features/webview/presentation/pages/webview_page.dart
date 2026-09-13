@@ -1,7 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+// ignore: implementation_imports
+import 'package:webview_flutter_android/src/android_webkit.g.dart' as android_webkit;
 import 'package:webview_domain_lock/core/services/storage_service.dart';
+import 'package:webview_domain_lock/features/cast/presentation/widgets/cast_modal_bottom_sheet.dart';
 import 'package:webview_domain_lock/features/cast/presentation/widgets/draggable_cast_button.dart';
 import 'package:webview_domain_lock/features/cast/services/cast_manager.dart';
 import 'package:webview_domain_lock/features/cast/services/video_detector_service.dart';
@@ -68,6 +73,8 @@ class _WebViewPageState extends State<WebViewPage> {
     _updateService = AppUpdateService();
     _dnsService = DnsService();
     _config = widget.initialConfig;
+    _setupAndroidWebViewClientHook();
+    _castManager.sessionStateNotifier.addListener(_syncCastStatusToWeb);
 
     if (widget.isTv) {
       _tvRemoteController = TvRemoteController(
@@ -139,9 +146,80 @@ class _WebViewPageState extends State<WebViewPage> {
 
   @override
   void dispose() {
+    _castManager.sessionStateNotifier.removeListener(_syncCastStatusToWeb);
     _tvRemoteController?.dispose();
     _castManager.stopDiscovery();
     super.dispose();
+  }
+
+  void _setupAndroidWebViewClientHook() {
+    try {
+      // ignore: invalid_use_of_visible_for_testing_member
+      android_webkit.PigeonOverrides.webViewClient_new = ({
+        onPageStarted,
+        onPageFinished,
+        onReceivedHttpError,
+        onReceivedRequestError,
+        onReceivedRequestErrorCompat,
+        requestLoading,
+        urlLoading,
+        doUpdateVisitedHistory,
+        onReceivedHttpAuthRequest,
+        onFormResubmission,
+        onLoadResource,
+        onPageCommitVisible,
+        onReceivedClientCertRequest,
+        onReceivedLoginRequest,
+        onReceivedSslError,
+        onScaleChanged,
+      }) {
+        // ignore: invalid_use_of_protected_member
+        return android_webkit.WebViewClient.pigeon_new(
+          onPageStarted: onPageStarted,
+          onPageFinished: onPageFinished,
+          onReceivedHttpError: onReceivedHttpError,
+          onReceivedRequestError: onReceivedRequestError,
+          onReceivedRequestErrorCompat: onReceivedRequestErrorCompat,
+          requestLoading: requestLoading,
+          urlLoading: urlLoading,
+          doUpdateVisitedHistory: doUpdateVisitedHistory,
+          onReceivedHttpAuthRequest: onReceivedHttpAuthRequest,
+          onFormResubmission: onFormResubmission,
+          onLoadResource: (client, view, url) {
+            onLoadResource?.call(client, view, url);
+            _videoDetectorService.inspectNetworkUrl(url);
+          },
+          onPageCommitVisible: onPageCommitVisible,
+          onReceivedClientCertRequest: onReceivedClientCertRequest,
+          onReceivedLoginRequest: onReceivedLoginRequest,
+          onReceivedSslError: onReceivedSslError,
+          onScaleChanged: onScaleChanged,
+        );
+      };
+    } catch (e) {
+      debugPrint('WebViewClient hook setup error: $e');
+    }
+  }
+
+  void _syncCastStatusToWeb() {
+    final isCasting = _castManager.isCasting;
+    _controller?.runJavaScript(
+      'if (window.__updateCastStatus) window.__updateCastStatus($isCasting);',
+    ).catchError((_) {});
+  }
+
+  void _openCastDialog() {
+    if (widget.isTv) {
+      setState(() {
+        _isTvMenuOpen = true;
+      });
+    } else {
+      CastModalBottomSheet.show(
+        context: context,
+        videoDetectorService: _videoDetectorService,
+        castManager: _castManager,
+      );
+    }
   }
 
   /// Memeriksa pembaruan URL domain dari GitHub raw secara berkala atau saat diminta pengguna
@@ -237,13 +315,25 @@ class _WebViewPageState extends State<WebViewPage> {
       final androidController = controller.platform as AndroidWebViewController;
       androidController.setMediaPlaybackRequiresUserGesture(false);
       androidController.setCustomWidgetCallbacks(
-        onShowCustomWidget: (Widget widget, OnHideCustomWidgetCallback callback) {
+        onShowCustomWidget: (Widget customWidget, OnHideCustomWidgetCallback callback) {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+          if (!widget.isTv) {
+            SystemChrome.setPreferredOrientations([
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+              DeviceOrientation.portraitUp,
+            ]);
+          }
           setState(() {
-            _fullscreenCustomWidget = widget;
+            _fullscreenCustomWidget = customWidget;
             _onHideCustomWidget = callback;
           });
         },
         onHideCustomWidget: () {
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+          if (!widget.isTv) {
+            SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+          }
           setState(() {
             _fullscreenCustomWidget = null;
             _onHideCustomWidget = null;
@@ -258,6 +348,14 @@ class _WebViewPageState extends State<WebViewPage> {
       ..addJavaScriptChannel(
         'VideoDetectorChannel',
         onMessageReceived: (JavaScriptMessage message) {
+          try {
+            final data = jsonDecode(message.message) as Map<String, dynamic>;
+            final type = data['type'] as String?;
+            if (type == 'open_cast_dialog') {
+              _openCastDialog();
+              return;
+            }
+          } catch (_) {}
           _videoDetectorService.handleMessage(message.message);
         },
       )
@@ -279,6 +377,7 @@ class _WebViewPageState extends State<WebViewPage> {
               });
             }
             _videoDetectorService.clear();
+            _videoDetectorService.updateCurrentPage(url);
           },
           onPageFinished: (String url) {
             if (mounted) {
@@ -291,6 +390,14 @@ class _WebViewPageState extends State<WebViewPage> {
               controller
                   .runJavaScript(VideoDetectorService.getInjectionScript())
                   .catchError((_) {});
+              // Sinkronkan status cast ke tombol in-player
+              _syncCastStatusToWeb();
+              // Update judul halaman untuk video detector
+              controller.getTitle().then((title) {
+                if (title != null && title.isNotEmpty) {
+                  _videoDetectorService.updatePageTitle(title);
+                }
+              }).catchError((_) {});
               // Terapkan zoom default dan spatial navigation untuk layar TV jika di TV
               if (widget.isTv && _tvRemoteController != null) {
                 controller
@@ -409,10 +516,25 @@ class _WebViewPageState extends State<WebViewPage> {
   Future<void> _handleBackPress() async {
     if (_fullscreenCustomWidget != null) {
       _onHideCustomWidget?.call();
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      if (!widget.isTv) {
+        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      }
       setState(() {
         _fullscreenCustomWidget = null;
+        _onHideCustomWidget = null;
       });
       return;
+    }
+    if (_controller != null) {
+      try {
+        final exited = await _controller!.runJavaScriptReturningResult(
+          'window.__exitPlayerFullscreen ? window.__exitPlayerFullscreen() : false;',
+        );
+        if (exited == true || exited == 'true') {
+          return;
+        }
+      } catch (_) {}
     }
     if (_isTvMenuOpen) {
       setState(() {
@@ -447,17 +569,26 @@ class _WebViewPageState extends State<WebViewPage> {
           children: [
             // Main content wrapped in SafeArea
             SafeArea(
-              top: !widget.isTv,
+              top: !widget.isTv && _fullscreenCustomWidget == null,
               bottom: false,
+              left: _fullscreenCustomWidget == null,
+              right: _fullscreenCustomWidget == null,
               child: Stack(
                 children: [
-                  // 1. Fullscreen Custom HTML5 Video Widget
-                  if (_fullscreenCustomWidget != null)
-                    Positioned.fill(child: _fullscreenCustomWidget!),
+                  // 1. Main WebView (always kept alive in widget tree)
+                  if (_controller != null && !_hasError)
+                    Positioned.fill(
+                      child: WebViewWidget(controller: _controller!),
+                    ),
 
-                  // 2. Main WebView
-                  if (_controller != null && !_hasError && _fullscreenCustomWidget == null)
-                    WebViewWidget(controller: _controller!),
+                  // 2. Fullscreen Custom HTML5 Video Widget (rendered on top)
+                  if (_fullscreenCustomWidget != null)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black,
+                        child: _fullscreenCustomWidget!,
+                      ),
+                    ),
 
                   // 3. Error State
                   if (_hasError && _fullscreenCustomWidget == null)

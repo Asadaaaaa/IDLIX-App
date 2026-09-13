@@ -27,7 +27,7 @@ class DetectedVideo {
 
   bool get isLikelyAd {
     if (isAd) return true;
-    if (duration != null && duration! > 0 && duration! <= 65) return true;
+    if (duration != null && duration! > 0 && duration! <= 75) return true;
     final lower = url.toLowerCase();
     const adKeywords = [
       '/ad/',
@@ -56,6 +56,15 @@ class DetectedVideo {
       'taboola',
       'springserve',
       'adservice',
+      'asia9',
+      'sbobet',
+      'mposport',
+      'judionline',
+      'monetag',
+      'highcpm',
+      'slot',
+      'casino',
+      'betting',
     ];
     for (final kw in adKeywords) {
       if (lower.contains(kw)) return true;

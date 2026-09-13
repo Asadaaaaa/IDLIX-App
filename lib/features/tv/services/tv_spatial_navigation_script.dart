@@ -62,30 +62,94 @@ class TvSpatialNavigationScript {
     return true;
   }
 
+  function isExcluded(el) {
+    if (!el) return true;
+
+    // Abaikan footer, komentar, breadcrumbs, dan metadata teks (cast, director, tags)
+    var badParent = el.closest(
+      'footer, .site-footer, #footer, #comments, .comments-area, ' +
+      '.breadcrumb, .breadcrumbs, .sgeneros, .cast, .director, ' +
+      '.extra-info, .tagcloud, .tags, .metadata, .meta'
+    );
+    if (badParent) return true;
+
+    // Abaikan teks link biasa di dalam paragraf sinopsis / artikel
+    if (el.tagName === 'A') {
+      var pParent = el.closest('p, .entry-content, .sinopsis, #info, .content');
+      if (pParent && !el.classList.contains('btn') && !el.classList.contains('button') && !el.closest('.episodios, .se-a, .items, .ml-item, .item, .server-item')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function getFocusables() {
-    var selector = 'a, button, input:not([type="hidden"]), select, textarea, [tabindex]:not([tabindex="-1"]), [role="button"], video, iframe, .ml-item, .item, .film-poster, .btn, .nav-item, .nav-link, .episode-item, .server-item';
+    // Selector terkurasi untuk web streaming IDLIX:
+    // 1. Poster & Banner Film
+    // 2. Tombol Navigasi / Navbar
+    // 3. Tombol Aksi (Play, Episode, Server, Skip)
+    // 4. In-Player Controls (Cast & Fullscreen)
+    // 5. Pagination
+    var selector = [
+      // Banner & Film Cards
+      '.ml-item a', '.ml-item',
+      '.film-poster a', '.film-poster',
+      '.item-pelicula a', '.item-pelicula',
+      'article.item-movies a', 'article.item-tvshows a', 'article.item a',
+      '.items article a', '.items .item a',
+      '.featured-post a', '.slide a', '.slider a', '.swiper-slide a',
+      '.poster a', '.poster',
+      
+      // Tombol & Kontrol Interaktif
+      'button:not([disabled])',
+      '.btn', '.button', '[role="button"]',
+      '.play-btn', '.btn-play', 'a[href*="#player"]',
+      '.server-item', '.btn-server', '#playeroptionsul li', '.dooplay_player_option',
+      '.episodios a', '.se-a', '.episode-item', '.btn-episode', 'ul.episodios li a',
+      '.jw-skip', '.video-ads-skip', '[class*="skip"]',
+      
+      // In-Player Overlay
+      '.idlix-inplayer-cast-btn', '.idlix-inplayer-fs-btn',
+      
+      // Navbar & Header
+      'header nav a', '#main-nav a', '.nav-item a', '.nav-link', '.menu-item a', '.navbar-nav a',
+      '.navbar-brand', 'header .logo a',
+      'input[type="search"]', 'input[type="text"].search', '#search', '.search-form input',
+      
+      // Pagination
+      '.pagination a', '.page-numbers', '.nav-links a'
+    ].join(', ');
+
     var all = Array.from(document.querySelectorAll(selector));
     var results = [];
+    var seen = new Set();
     var vpH = window.innerHeight || document.documentElement.clientHeight;
     var vpW = window.innerWidth || document.documentElement.clientWidth;
 
     for (var i = 0; i < all.length; i++) {
       var el = all[i];
+      if (seen.has(el)) continue;
 
-      // Avoid focusing large container wrappers if they contain clickable children
-      if (el.tagName !== 'A' && el.tagName !== 'BUTTON' && el.tagName !== 'INPUT') {
-        if (el.querySelector('a, button, input')) {
+      // Jika container membungkus child focusable yang lebih spesifik, lewati container
+      if (el.tagName !== 'A' && el.tagName !== 'BUTTON' && el.tagName !== 'INPUT' && !el.classList.contains('idlix-inplayer-cast-btn') && !el.classList.contains('idlix-inplayer-fs-btn')) {
+        if (el.querySelector('a, button, input, .idlix-inplayer-cast-btn, .idlix-inplayer-fs-btn')) {
           continue;
         }
       }
 
-      if (!isVisible(el)) continue;
+      if (!isVisible(el) || isExcluded(el)) continue;
 
       var rect = el.getBoundingClientRect();
-      // Filter out elements too far from current viewport
+      // Pastikan memiliki ukuran minimal agar layak dipilih remote TV
+      if (rect.width < 16 || rect.height < 16) continue;
+
+      // Filter elemen yang berada terlalu jauh di luar layar
       if (rect.bottom < -400 || rect.top > vpH + 400 || rect.right < -150 || rect.left > vpW + 150) {
         continue;
       }
+
+      seen.add(el);
       results.push({ el: el, rect: rect });
     }
     return results;
