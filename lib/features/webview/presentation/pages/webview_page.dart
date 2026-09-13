@@ -157,6 +157,9 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   void _openCastDialog() {
+    _controller?.runJavaScript(
+      'if (window.__triggerFastScan) window.__triggerFastScan();',
+    ).catchError((_) {});
     if (widget.isTv) {
       setState(() {
         _isTvMenuOpen = true;
@@ -315,6 +318,11 @@ class _WebViewPageState extends State<WebViewPage> {
                 _loadingProgress = progress;
               });
             }
+            if (progress >= 50 && progress <= 65) {
+              controller
+                  .runJavaScript(VideoDetectorService.getInjectionScript())
+                  .catchError((_) {});
+            }
           },
           onPageStarted: (String url) {
             if (mounted) {
@@ -326,6 +334,10 @@ class _WebViewPageState extends State<WebViewPage> {
             }
             _videoDetectorService.clear();
             _videoDetectorService.updateCurrentPage(url);
+            // Injeksi awal sebelum script halaman lain dieksekusi
+            controller
+                .runJavaScript(VideoDetectorService.getPreInjectionScript())
+                .catchError((_) {});
           },
           onPageFinished: (String url) {
             if (mounted) {
@@ -334,7 +346,7 @@ class _WebViewPageState extends State<WebViewPage> {
               });
               // Injeksi JS untuk mencegah popup window.open dan target="_blank"
               _preventPopupsAndNewWindows(controller);
-              // Injeksi JS sniffer video & subtitle
+              // Injeksi JS sniffer video & subtitle lengkap
               controller
                   .runJavaScript(VideoDetectorService.getInjectionScript())
                   .catchError((_) {});
@@ -359,6 +371,14 @@ class _WebViewPageState extends State<WebViewPage> {
               }
             }
           },
+          onUrlChange: (UrlChange change) {
+            if (change.url != null && change.url!.isNotEmpty) {
+              _videoDetectorService.inspectNetworkUrl(
+                change.url!,
+                referer: _videoDetectorService.currentPageUrl,
+              );
+            }
+          },
           onWebResourceError: (WebResourceError error) {
             // Hanya tangani error level halaman utama (bukan resource minor seperti favicon yang gagal)
             if (error.isForMainFrame ?? true) {
@@ -372,6 +392,23 @@ class _WebViewPageState extends State<WebViewPage> {
             }
           },
           onNavigationRequest: (NavigationRequest request) {
+            _videoDetectorService.inspectNetworkUrl(
+              request.url,
+              referer: _videoDetectorService.currentPageUrl,
+            );
+
+            final lowerReq = request.url.toLowerCase();
+            if (lowerReq.contains('embed') ||
+                lowerReq.contains('player') ||
+                lowerReq.contains('stream') ||
+                lowerReq.contains('jeniusplay') ||
+                lowerReq.contains('vidhide')) {
+              _videoDetectorService.resolveEmbedUrl(
+                request.url,
+                referer: _videoDetectorService.currentPageUrl,
+              );
+            }
+
             final allowedHost = _config?.allowedHost ?? '';
             final eval = _navigationService.evaluateNavigation(
               request.url,

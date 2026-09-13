@@ -236,6 +236,32 @@ void main() {
       service.inspectNetworkUrl('https://edge.provider.xyz/hls/the-mentalist-s07e01/frag-1.m4s');
       expect(service.detectedVideos.length, 1); // Still only the master playlist!
     });
+
+    test('unpackJs successfully unpacks Dean Edwards packed javascript', () {
+      const packed = "eval(function(p,a,c,k,e,r){return p}('0 1=\"2://3/4.5\";',6,6,'var|stream|https|edge.provider.xyz|master|m3u8'.split('|')))";
+      final unpacked = VideoDetectorService.unpackJs(packed);
+      expect(unpacked.contains('https://edge.provider.xyz/master.m3u8'), isTrue);
+    });
+
+    test('getPreInjectionScript returns valid non-empty JS', () {
+      final script = VideoDetectorService.getPreInjectionScript();
+      expect(script.isNotEmpty, isTrue);
+      expect(script.contains('__videoPreSnifferInjected'), isTrue);
+      expect(script.contains('origFetch'), isTrue);
+      expect(script.contains('createObjectURL'), isTrue);
+    });
+
+    test('handles embed_detected message without errors', () {
+      final msg = jsonEncode({
+        'type': 'embed_detected',
+        'embedUrl': 'https://doubleclick.net/ad/frame', // Ad embed -> blocked
+        'pageTitle': 'Sample Page',
+        'pageUrl': 'https://z2.idlixku.com/movie/test',
+      });
+      // Should not throw and should safely ignore blocked ad embed
+      service.handleMessage(msg);
+      expect(service.detectedVideos, isEmpty);
+    });
   });
 
   group('Navigation with Subframe Video Embeds', () {
