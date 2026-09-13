@@ -48,9 +48,9 @@ class _CastModalBottomSheetState extends State<CastModalBottomSheet> {
   @override
   void initState() {
     super.initState();
-    final videos = widget.videoDetectorService.detectedVideos;
-    if (videos.isNotEmpty) {
-      _selectedVideo = widget.castManager.activeVideoNotifier.value ?? videos.first;
+    final best = widget.videoDetectorService.getBestVideo();
+    _selectedVideo = widget.castManager.activeVideoNotifier.value ?? best;
+    if (_selectedVideo != null) {
       _initDefaultSubtitle(_selectedVideo!);
     }
     widget.castManager.startDiscovery();
@@ -553,6 +553,17 @@ class _CastModalBottomSheetState extends State<CastModalBottomSheet> {
     return ValueListenableBuilder<List<DetectedVideo>>(
       valueListenable: widget.videoDetectorService.detectedVideosNotifier,
       builder: (context, videos, _) {
+        final bestVideo = widget.videoDetectorService.getBestVideo();
+        if (_selectedVideo == null && bestVideo != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                _selectedVideo = bestVideo;
+                _initDefaultSubtitle(bestVideo);
+              });
+            }
+          });
+        }
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -651,9 +662,27 @@ class _CastModalBottomSheetState extends State<CastModalBottomSheet> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: Colors.white38, fontSize: 11),
                             ),
-                            const SizedBox(height: 4),
-                            Row(
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
                               children: [
+                                if (v.url == bestVideo?.url)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade800,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'FILM / EPISODE',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
@@ -669,14 +698,36 @@ class _CastModalBottomSheetState extends State<CastModalBottomSheet> {
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                if (v.duration != null && v.duration! > 0)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blueGrey.shade800,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${(v.duration! / 60).floor()}m ${(v.duration! % 60).floor()}s',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
                                 if (v.subtitles.isNotEmpty)
-                                  Text(
-                                    '${v.subtitles.length} Subtitles available',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.greenAccent,
-                                      fontWeight: FontWeight.w500,
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade900,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${v.subtitles.length} Subtitles',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
                               ],

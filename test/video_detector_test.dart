@@ -126,6 +126,86 @@ void main() {
       expect(service.detectedVideos, isEmpty);
       expect(service.standaloneSubtitles, isEmpty);
     });
+
+    test('filters out ad videos and prerolls', () {
+      // 1. Ad with ad keyword
+      service.handleMessage(jsonEncode({
+        'type': 'video_detected',
+        'videoUrl': 'https://adserver.com/vast/preroll_ad.mp4',
+        'title': 'Ad Video',
+        'subtitles': [],
+      }));
+      expect(service.detectedVideos, isEmpty);
+
+      // 2. Ad with short duration (e.g. 15s)
+      service.handleMessage(jsonEncode({
+        'type': 'video_detected',
+        'videoUrl': 'https://stream.server.com/promo.mp4',
+        'title': 'Promo Ad',
+        'duration': 15,
+        'subtitles': [],
+      }));
+      expect(service.detectedVideos, isEmpty);
+
+      // 3. Ad from blocked ad domain
+      service.handleMessage(jsonEncode({
+        'type': 'video_detected',
+        'videoUrl': 'https://doubleclick.net/media/video.mp4',
+        'title': 'DoubleClick Ad',
+        'subtitles': [],
+      }));
+      expect(service.detectedVideos, isEmpty);
+
+      // 4. Real movie (HLS + duration 2600s + subtitles)
+      service.handleMessage(jsonEncode({
+        'type': 'video_detected',
+        'videoUrl': 'https://stream.server.com/the-mentalist/master.m3u8',
+        'title': 'The Mentalist S07E01',
+        'duration': 2600,
+        'subtitles': [
+          {
+            'url': 'https://sub.server.com/id.vtt',
+            'label': 'Indonesian',
+            'lang': 'id',
+          }
+        ],
+      }));
+      expect(service.detectedVideos.length, 1);
+      expect(service.detectedVideos.first.title, 'The Mentalist S07E01');
+      expect(service.getBestVideo()?.title, 'The Mentalist S07E01');
+    });
+
+    test('getBestVideo prioritizes full movie over secondary clips', () {
+      // Clip A: short mp4 clip without subtitles
+      service.handleMessage(jsonEncode({
+        'type': 'video_detected',
+        'videoUrl': 'https://stream.server.com/sample_preview.mp4',
+        'title': 'Preview Clip',
+        'duration': 95,
+        'subtitles': [],
+      }));
+
+      // Clip B: full movie HLS master playlist with subtitles
+      service.handleMessage(jsonEncode({
+        'type': 'video_detected',
+        'videoUrl': 'https://stream.server.com/the-mentalist/master.m3u8',
+        'title': 'The Mentalist S07E01',
+        'duration': 2600,
+        'subtitles': [
+          {
+            'url': 'https://sub.server.com/id.vtt',
+            'label': 'Indonesian',
+            'lang': 'id',
+          }
+        ],
+      }));
+
+      final best = service.getBestVideo();
+      expect(best, isNotNull);
+      expect(best!.title, 'The Mentalist S07E01');
+      expect(best.isHls, isTrue);
+      expect(service.detectedVideos.first.title, 'The Mentalist S07E01');
+    });
   });
 
   group('Navigation with Subframe Video Embeds', () {

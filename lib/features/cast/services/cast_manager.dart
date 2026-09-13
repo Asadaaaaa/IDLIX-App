@@ -3,6 +3,7 @@ import 'package:dart_cast/dart_cast.dart';
 import 'package:flutter/foundation.dart';
 import 'package:webview_domain_lock/features/cast/models/detected_subtitle.dart';
 import 'package:webview_domain_lock/features/cast/models/detected_video.dart';
+import 'package:webview_domain_lock/features/cast/services/video_detector_service.dart';
 
 class CastManager {
   static final CastManager _instance = CastManager._internal();
@@ -224,6 +225,28 @@ class CastManager {
     } finally {
       _cleanupSession();
     }
+  }
+
+  /// Monitors for movie stream upgrades when an ad stream finishes or real film stream is detected
+  void monitorVideoUpgrades(VideoDetectorService videoDetectorService) {
+    videoDetectorService.detectedVideosNotifier.addListener(() {
+      if (isCasting && activeVideoNotifier.value != null) {
+        final cur = activeVideoNotifier.value!;
+        final best = videoDetectorService.getBestVideo();
+        if (best != null && best.url != cur.url) {
+          if (cur.isLikelyAd || (best.priorityScore > cur.priorityScore + 30)) {
+            debugPrint('CastManager: Auto-upgrading cast stream to detected movie stream: ${best.url}');
+            castVideo(
+              video: best,
+              subtitle: activeSubtitleNotifier.value ?? (best.subtitles.isNotEmpty ? best.subtitles.first : null),
+              targetDevice: activeDeviceNotifier.value,
+            ).catchError((e) {
+              debugPrint('CastManager: error auto-upgrading stream: $e');
+            });
+          }
+        }
+      }
+    });
   }
 
   void _cleanupSession() {

@@ -81,7 +81,7 @@ class TvQuickMenu extends StatelessWidget {
                     return const SizedBox.shrink();
                   }
 
-                  final firstVideo = videos.first;
+                  final bestVideo = videoDetectorService.getBestVideo() ?? videos.first;
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16),
                     padding: const EdgeInsets.all(12),
@@ -99,7 +99,7 @@ class TvQuickMenu extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Stream: ${firstVideo.title}',
+                                'Stream: ${bestVideo.title}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
@@ -109,7 +109,7 @@ class TvQuickMenu extends StatelessWidget {
                                 ),
                               ),
                               Text(
-                                '${firstVideo.subtitles.length} Subtitles available',
+                                '${bestVideo.subtitles.length} Subtitles available${bestVideo.duration != null && bestVideo.duration! > 0 ? " • ${(bestVideo.duration! / 60).floor()}m" : ""}',
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 12,
@@ -141,35 +141,33 @@ class TvQuickMenu extends StatelessWidget {
                 },
               ),
 
-              // 2. Pengaturan Kursor Virtual Mouse
-              ValueListenableBuilder<bool>(
-                valueListenable: remoteController.isCursorVisibleNotifier,
-                builder: (context, isCursorOn, _) {
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      isCursorOn ? Icons.mouse : Icons.touch_app,
-                      color: const Color(0xFFE50914),
-                    ),
-                    title: const Text(
-                      'Virtual Mouse Cursor',
-                      style: TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                    subtitle: Text(
-                      isCursorOn
-                          ? 'Enabled (Move with Remote D-Pad)'
-                          : 'Disabled',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                    trailing: Switch(
-                      value: isCursorOn,
-                      activeThumbColor: const Color(0xFFE50914),
-                      onChanged: (val) {
-                        remoteController.isCursorVisibleNotifier.value = val;
-                      },
-                    ),
-                  );
-                },
+              // 2. TV Navigation Mode Info
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.tv_rounded,
+                  color: Color(0xFFE50914),
+                ),
+                title: const Text(
+                  'Netflix-Style Navigation',
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                subtitle: const Text(
+                  'Direct element & button selection using TV Remote D-Pad (Up, Down, Left, Right, OK)',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE50914).withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE50914)),
+                  ),
+                  child: const Text(
+                    'Active',
+                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ),
               ),
 
               // 3. Zoom Layar TV (Ukuran Teks Web)

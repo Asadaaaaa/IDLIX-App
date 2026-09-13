@@ -10,10 +10,10 @@ Choose the APK version made for your device:
 
 | Device | App Version | Download Link | Features |
 |---|---|---|---|
-| 📱 **Phone & Tablet** | **IDLIX** | [**Download IDLIX.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.7.0/IDLIX.apk) | Fullscreen edge-to-edge viewing, touch controls, video casting with subtitles |
-| 📺 **Android TV & STB Box** | **IDLIX TV** | [**Download IDLIX-TV.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.7.0/IDLIX-TV.apk) | Works with your TV remote, on-screen mouse pointer, auto-scrolling, big-screen zoom |
+| 📱 **Phone & Tablet** | **IDLIX** | [**Download IDLIX.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.8.0/IDLIX.apk) | Fullscreen edge-to-edge viewing, touch controls, video casting with subtitles |
+| 📺 **Android TV & STB Box** | **IDLIX TV** | [**Download IDLIX-TV.apk**](https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.8.0/IDLIX-TV.apk) | Works with your TV remote, Netflix-style element selection, auto-scrolling, big-screen zoom |
 
-- **Latest Release:** [IDLIX-App v1.7.0 on GitHub](https://github.com/Asadaaaaa/IDLIX-App/releases/tag/v1.7.0)
+- **Latest Release:** [IDLIX-App v1.8.0 on GitHub](https://github.com/Asadaaaaa/IDLIX-App/releases/tag/v1.8.0)
 - **Works on:** Android 5.0 or higher.
 
 ---
@@ -26,10 +26,10 @@ Watching movies on streaming websites can be frustrating due to endless fake dow
 - Automatically blocks popups, scam tabs, and redirect links.
 - When an ad tries to hijack your screen, the app shields you and notifies you with **"Popup Ads Blocked"**.
 
-### 📺 Fully Compatible with TV Remote Controls
-- **On-Screen Mouse Pointer:** Move a smooth virtual cursor across your TV screen using the arrow keys on your physical remote control.
-- **Auto-Scroll:** Moving the pointer near the top or bottom of the screen automatically scrolls the webpage up or down.
-- **One-Click Play:** Press the **OK / Select** button to click play, choose servers, or select episodes.
+### 📺 Fully Compatible with TV Remote Controls (Netflix Style)
+- **Netflix-Style Focus Navigation:** Effortlessly navigate movie cards, episode buttons, and server options using your TV remote D-Pad—no tiring, imprecise mouse cursor.
+- **Glowing Red Focus Indicator:** Clear visual highlight scales the active element and centers it on screen.
+- **One-Click Play:** Press the **OK / Select** button to immediately open movies, switch servers, or play episodes.
 - **Zoom Modes:** Easy zoom options (100%, 125%, 150%) so movie titles and descriptions are easy to read from your couch.
 
 ### 📡 Cast to Smart TV with Subtitles
@@ -50,8 +50,8 @@ Here is how you control the app using your TV or STB remote:
 
 | Remote Button | What it Does |
 |---|---|
-| **Arrow Keys (Up / Down / Left / Right)** | Move the mouse pointer on your TV screen |
-| **OK / Select / Center** | Click the movie, episode, or button under the pointer |
+| **Arrow Keys (Up / Down / Left / Right)** | Navigate directly between movie cards, buttons, and menus (Netflix-style) |
+| **OK / Select / Center** | Select and play the currently highlighted item |
 | **Menu Button** | Open the **TV Quick Menu** (change zoom, reload, check updates) |
 | **Back / Return** | Go back to the previous page or close a menu |
 | **Play / Pause** | Pause or resume the movie currently playing |

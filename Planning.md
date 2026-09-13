@@ -143,16 +143,17 @@ The application eliminates the friction of traditional web streaming on Android:
      - Grants `FLAG_GRANT_READ_URI_PERMISSION`.
      - Fires `Intent(Intent.ACTION_VIEW)` with MIME type `application/vnd.android.package-archive`.
 
-### 5.4. Android TV & STB Remote D-Pad Navigation
-- **Classes:** `TvRemoteController`, `TvVirtualCursor`, `TvQuickMenu`
+### 5.4. Android TV & STB Remote D-Pad Navigation (Netflix Style)
+- **Classes:** `TvRemoteController`, `TvSpatialNavigationScript`, `TvQuickMenu`
 - **Hardware Profile:**
   - Declares `android.software.leanback` (optional) and `android.hardware.touchscreen` as false.
   - Integrates 16:9 Leanback banner for the Android TV launcher.
-- **D-Pad Virtual Cursor:**
-  - Simulates an on-screen mouse pointer moved by remote directional keys (`KEYCODE_DPAD_UP`, `DOWN`, `LEFT`, `RIGHT`).
-  - Dynamic acceleration curve: holding down keys progressively increases cursor velocity while maintaining sub-pixel precision for brief taps.
-  - Automated edge scrolling triggers whenever the cursor enters top/bottom boundary zones.
-  - Center/OK button invokes coordinate-based synthetic mouse events (`mousemove`, `mousedown`, `mouseup`, `click`) in the DOM.
+- **Netflix-Style Spatial Focus Navigation:**
+  - Replaces exhausting virtual mouse pointers with direct, 2D spatial element and button selection.
+  - Directional navigation (`KEYCODE_DPAD_UP`, `DOWN`, `LEFT`, `RIGHT`) calculates spatial Euclidean proximity and axis overlap to jump seamlessly between movie posters, episodes, servers, and buttons.
+  - Signature TV focus styling: vibrant red outline (`#E50914`), card scale-up animation (`scale(1.05)`), glowing outer shadow, and automated smooth viewport centering (`scrollIntoView`).
+  - Center/OK button executes synthetic click sequences with active press visual feedback.
+  - Boundary scrolling automatically scrolls the viewport smoothly when navigating past screen bounds.
 - **TV Quick Menu:**
   - Activated by remote `KEYCODE_MENU` or context buttons.
   - Provides quick zoom presets (100%, 125%, 150%) for viewing from distance.
@@ -160,9 +161,13 @@ The application eliminates the friction of traditional web streaming on Android:
 
 ### 5.5. Video Stream & Subtitle Sniffer with Smart TV Casting
 - **Classes:** `VideoDetectorService`, `CastManager`, `DraggableCastButton`, `CastControlBar`
-- **JavaScript Injection Sniffer:**
+- **JavaScript Injection Sniffer & Ad Filter:**
   - Monitors HTML5 `<video>`, `<source>`, and third-party web player wrappers (JWPlayer, Video.js, Plyr).
   - Intercepts `XMLHttpRequest.prototype.open` and `window.fetch` to detect `.m3u8` and `.mp4` URLs.
+  - **Pre-Roll Ad Defense:** Filters out video ads (duration <= 65s, ad domains, ad containers, and ad keywords like `vast`, `preroll`).
+  - **Skip-Ad Lifecycle Tracking:** Detects skip buttons, `adComplete`/`adSkipped` player events, and `durationchange`/`ended` events on `<video>` elements to immediately capture and prioritize the real movie stream as soon as the ad is skipped or finishes.
+  - **Movie Stream Prioritization:** Automatically sorts streams by `priorityScore` (HLS master playlists, duration > 5m, attached subtitles) so the main movie is always selected first.
+  - **Auto-Upgrade During Active Cast:** If casting begins during an ad or preview, `CastManager` automatically switches the cast stream to the true movie stream as soon as it begins playing.
   - Intercepts `<track>` elements and WebVTT/SRT network payloads for Indonesian and English subtitles.
 - **Casting Protocol Support:**
   - **Google Cast:** Google Cast V2 channel support for Chromecast dongles, Android TV, and Google TV.

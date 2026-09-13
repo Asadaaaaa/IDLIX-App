@@ -6,7 +6,6 @@ import 'package:webview_domain_lock/features/cast/presentation/widgets/draggable
 import 'package:webview_domain_lock/features/cast/services/cast_manager.dart';
 import 'package:webview_domain_lock/features/cast/services/video_detector_service.dart';
 import 'package:webview_domain_lock/features/tv/presentation/widgets/tv_quick_menu.dart';
-import 'package:webview_domain_lock/features/tv/presentation/widgets/tv_virtual_cursor.dart';
 import 'package:webview_domain_lock/features/tv/services/tv_remote_controller.dart';
 import 'package:webview_domain_lock/features/webview/models/webview_config.dart';
 import 'package:webview_domain_lock/features/webview/presentation/widgets/loading_overlay.dart';
@@ -65,6 +64,7 @@ class _WebViewPageState extends State<WebViewPage> {
     _videoDetectorService = VideoDetectorService();
     _castManager = CastManager();
     _castManager.init();
+    _castManager.monitorVideoUpgrades(_videoDetectorService);
     _updateService = AppUpdateService();
     _dnsService = DnsService();
     _config = widget.initialConfig;
@@ -291,12 +291,15 @@ class _WebViewPageState extends State<WebViewPage> {
               controller
                   .runJavaScript(VideoDetectorService.getInjectionScript())
                   .catchError((_) {});
-              // Terapkan zoom default untuk layar TV jika di TV
+              // Terapkan zoom default dan spatial navigation untuk layar TV jika di TV
               if (widget.isTv && _tvRemoteController != null) {
                 controller
                     .runJavaScript(
                       "document.body.style.zoom = '${_tvRemoteController!.textScaleNotifier.value}';",
                     )
+                    .catchError((_) {});
+                controller
+                    .runJavaScript(TvRemoteController.getSpatialNavInjectionScript())
                     .catchError((_) {});
               }
             }
@@ -518,9 +521,6 @@ class _WebViewPageState extends State<WebViewPage> {
                       castManager: _castManager,
                     ),
 
-                  // 6. Virtual Mouse Cursor for Android TV
-                  if (widget.isTv && _tvRemoteController != null && _fullscreenCustomWidget == null)
-                    TvVirtualCursor(remoteController: _tvRemoteController!),
 
                   // 6b. TV Remote Menu Shortcut Button
                   if (widget.isTv && _fullscreenCustomWidget == null)

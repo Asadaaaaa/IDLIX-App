@@ -58,13 +58,29 @@ void main() {
       expect(controller.textScaleNotifier.value, 1.5);
     });
 
-    test('cursor visibility toggling', () {
+    test('cursor visibility is false by default for Netflix focus mode', () {
+      expect(controller.isCursorVisibleNotifier.value, isFalse);
+      controller.isCursorVisibleNotifier.value = true;
       expect(controller.isCursorVisibleNotifier.value, isTrue);
       controller.isCursorVisibleNotifier.value = false;
       expect(controller.isCursorVisibleNotifier.value, isFalse);
     });
 
-    test('remote key events trigger callbacks', () {
+    test('spatial navigation script is valid and non-empty', () {
+      final script = TvRemoteController.getSpatialNavInjectionScript();
+      expect(script, isNotEmpty);
+      expect(script.contains('idlix-tv-focused'), isTrue);
+      expect(script.contains('idlix-tv-focus-glow'), isTrue);
+      expect(script.contains('__idlixTvNav'), isTrue);
+    });
+
+    test('performClick sets isClickingNotifier state', () {
+      expect(controller.isClickingNotifier.value, isFalse);
+      controller.performClick();
+      expect(controller.isClickingNotifier.value, isTrue);
+    });
+
+    test('remote key events trigger callbacks and element selection', () {
       HardwareKeyboard.instance.handleKeyEvent(
         const KeyDownEvent(
           physicalKey: PhysicalKeyboardKey.contextMenu,
@@ -91,6 +107,16 @@ void main() {
         ),
       );
       expect(playPauseTriggered, isTrue);
+
+      // OK/Enter triggers click
+      HardwareKeyboard.instance.handleKeyEvent(
+        const KeyDownEvent(
+          physicalKey: PhysicalKeyboardKey.select,
+          logicalKey: LogicalKeyboardKey.select,
+          timeStamp: Duration.zero,
+        ),
+      );
+      expect(controller.isClickingNotifier.value, isTrue);
     });
   });
 }
