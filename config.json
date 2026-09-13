@@ -3,9 +3,9 @@
   "allowed_host": "idlixku.com",
   "name": "IDLIX",
   "updated_at": "2026-09-13",
-  "latest_version": "1.9.3",
-  "latest_version_code": 22,
-  "release_notes": "1. Iframe Video Detection Fix: Script deteksi sekarang diinjeksi langsung ke dalam iframe player (termasuk cross-origin) menggunakan Android addJavascriptInterface yang tersedia di semua frame.\\n2. MutationObserver Iframe Watcher: Deteksi iframe player yang ditambahkan secara dinamis dan langsung menginjeksi hooks fetch/XHR ke dalamnya.\\n3. Hls.js Lazy-Hook: Intercept Hls class bahkan jika dimuat belakangan via Object.defineProperty trap.",
-  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.3/IDLIX.apk",
-  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.3/IDLIX-TV.apk"
+  "latest_version": "2.0.0",
+  "latest_version_code": 24,
+  "release_notes": "1. Fitur Baru - LAN Remote & Sync (Mobile ke TV): Kontrol TV langsung dari HP dalam satu jaringan Wi-Fi! Putar film pilihan dari HP langsung ke TV, kontrol Fullscreen, Play/Pause, dan Navigasi.\\n2. Penghapusan Fitur Cast Lama: Menghapus total ketergantungan Chromecast & DLNA yang tidak kompatibel dengan player IDLIX untuk pengalaman yang jauh lebih stabil dan ringan.\\n3. Optimasi Ukuran & Performa: Bebas dari dependensi berat, ukuran APK semakin ramping dan responsif.",
+  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.0.0/IDLIX.apk",
+  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.0.0/IDLIX-TV.apk"
 }

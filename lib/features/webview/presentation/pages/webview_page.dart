@@ -1,13 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_domain_lock/core/services/storage_service.dart';
-import 'package:webview_domain_lock/features/cast/presentation/widgets/cast_modal_bottom_sheet.dart';
-import 'package:webview_domain_lock/features/cast/presentation/widgets/draggable_cast_button.dart';
-import 'package:webview_domain_lock/features/cast/services/cast_manager.dart';
-import 'package:webview_domain_lock/features/cast/services/video_detector_service.dart';
+import 'package:webview_domain_lock/features/remote_sync/models/remote_command.dart';
+import 'package:webview_domain_lock/features/remote_sync/presentation/widgets/draggable_tv_remote_button.dart';
+import 'package:webview_domain_lock/features/remote_sync/services/mobile_remote_service.dart';
+import 'package:webview_domain_lock/features/remote_sync/services/tv_receiver_service.dart';
 import 'package:webview_domain_lock/features/tv/presentation/widgets/tv_quick_menu.dart';
 import 'package:webview_domain_lock/features/tv/services/tv_remote_controller.dart';
 import 'package:webview_domain_lock/features/webview/models/webview_config.dart';
@@ -18,7 +17,6 @@ import 'package:webview_domain_lock/features/update/presentation/widgets/app_upd
 import 'package:webview_domain_lock/features/update/services/app_update_service.dart';
 import 'package:webview_domain_lock/features/webview/presentation/widgets/idlix_splash_screen.dart';
 import 'package:webview_domain_lock/features/webview/services/webview_navigation_service.dart';
-import 'package:dart_cast/dart_cast.dart';
 
 class WebViewPage extends StatefulWidget {
   final StorageService storageService;
@@ -40,9 +38,10 @@ class WebViewPage extends StatefulWidget {
 
 class _WebViewPageState extends State<WebViewPage> {
   late final WebViewNavigationService _navigationService;
-  late final VideoDetectorService _videoDetectorService;
-  late final CastManager _castManager;
   TvRemoteController? _tvRemoteController;
+
+  MobileRemoteService? _mobileRemoteService;
+  TvReceiverService? _tvReceiverService;
 
   WebViewController? _controller;
   WebViewConfig? _config;
@@ -60,20 +59,23 @@ class _WebViewPageState extends State<WebViewPage> {
   Widget? _fullscreenCustomWidget;
   void Function()? _onHideCustomWidget;
 
+  String _currentLoadedUrl = '';
+  String _currentLoadedTitle = '';
+
   @override
   void initState() {
     super.initState();
     _navigationService = WebViewNavigationService();
-    _videoDetectorService = VideoDetectorService();
-    _castManager = CastManager();
-    _castManager.init();
-    _castManager.monitorVideoUpgrades(_videoDetectorService);
     _updateService = AppUpdateService();
     _dnsService = DnsService();
     _config = widget.initialConfig;
-    _castManager.sessionStateNotifier.addListener(_syncCastStatusToWeb);
 
     if (widget.isTv) {
+      _tvReceiverService = TvReceiverService(
+        onCommandReceived: _handleTvRemoteCommand,
+      );
+      _tvReceiverService!.start();
+
       _tvRemoteController = TvRemoteController(
         getController: () => _controller!,
         onToggleMenu: () {
@@ -82,56 +84,14 @@ class _WebViewPageState extends State<WebViewPage> {
           });
         },
         onBack: () => _handleBackPress(),
-        onMediaPlayPause: () {
-          if (_castManager.isCasting) {
-            final isPlaying =
-                _castManager.sessionStateNotifier.value == SessionState.playing;
-            if (isPlaying) {
-              _castManager.pause();
-            } else {
-              _castManager.play();
-            }
-          } else {
-            _controller?.runJavaScript('''
-              (function() {
-                var videos = document.querySelectorAll('video');
-                if (videos.length > 0) {
-                  var v = videos[0];
-                  if (v.paused) v.play(); else v.pause();
-                }
-              })();
-            ''').catchError((_) {});
-          }
-        },
-        onMediaForward: () {
-          if (_castManager.isCasting) {
-            final cur = _castManager.positionNotifier.value;
-            _castManager.seek(cur + const Duration(seconds: 10));
-          } else {
-            _controller?.runJavaScript('''
-              (function() {
-                var videos = document.querySelectorAll('video');
-                if (videos.length > 0) videos[0].currentTime += 10;
-              })();
-            ''').catchError((_) {});
-          }
-        },
-        onMediaRewind: () {
-          if (_castManager.isCasting) {
-            final cur = _castManager.positionNotifier.value;
-            final newPos = cur - const Duration(seconds: 10);
-            _castManager.seek(newPos.isNegative ? Duration.zero : newPos);
-          } else {
-            _controller?.runJavaScript('''
-              (function() {
-                var videos = document.querySelectorAll('video');
-                if (videos.length > 0) videos[0].currentTime = Math.max(0, videos[0].currentTime - 10);
-              })();
-            ''').catchError((_) {});
-          }
-        },
+        onMediaPlayPause: () => _toggleWebVideoPlayPause(),
+        onMediaForward: () => _seekWebVideo(10),
+        onMediaRewind: () => _seekWebVideo(-10),
       );
       _tvRemoteController!.init();
+    } else {
+      _mobileRemoteService = MobileRemoteService();
+      _mobileRemoteService!.startAutoDiscovery();
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -143,34 +103,79 @@ class _WebViewPageState extends State<WebViewPage> {
 
   @override
   void dispose() {
-    _castManager.sessionStateNotifier.removeListener(_syncCastStatusToWeb);
     _tvRemoteController?.dispose();
-    _castManager.stopDiscovery();
+    _tvReceiverService?.dispose();
+    _mobileRemoteService?.dispose();
     super.dispose();
   }
 
-  void _syncCastStatusToWeb() {
-    final isCasting = _castManager.isCasting;
-    _controller?.runJavaScript(
-      'if (window.__updateCastStatus) window.__updateCastStatus($isCasting);',
-    ).catchError((_) {});
+  void _handleTvRemoteCommand(RemoteCommand cmd) {
+    switch (cmd.action) {
+      case RemoteAction.navigate:
+        if (cmd.url != null && cmd.url!.isNotEmpty && _controller != null) {
+          _controller!.loadRequest(Uri.parse(cmd.url!));
+        }
+        break;
+      case RemoteAction.fullscreen:
+        _controller?.runJavaScript('''
+          (function() {
+            if (window.__exitPlayerFullscreen && window.__isCssFullscreen) {
+              window.__exitPlayerFullscreen();
+              return;
+            }
+            var container = document.getElementById('embed-holder') ||
+                            document.getElementById('player') ||
+                            document.querySelector('.player-embed') ||
+                            document.querySelector('.player-large') ||
+                            document.querySelector('iframe') ||
+                            document.querySelector('video');
+            if (container) {
+              var rfs = container.requestFullscreen || container.webkitRequestFullscreen;
+              if (rfs) rfs.call(container);
+            }
+          })();
+        ''').catchError((_) {});
+        break;
+      case RemoteAction.playPause:
+        _toggleWebVideoPlayPause();
+        break;
+      case RemoteAction.seekForward:
+        _seekWebVideo(10);
+        break;
+      case RemoteAction.seekRewind:
+        _seekWebVideo(-10);
+        break;
+      case RemoteAction.reload:
+        _controller?.reload();
+        break;
+      case RemoteAction.goBack:
+        _handleBackPress();
+        break;
+    }
   }
 
-  void _openCastDialog() {
-    _controller?.runJavaScript(
-      'if (window.__triggerFastScan) window.__triggerFastScan(); if (window.__injectToIframes) window.__injectToIframes();',
-    ).catchError((_) {});
-    if (widget.isTv) {
-      setState(() {
-        _isTvMenuOpen = true;
-      });
-    } else {
-      CastModalBottomSheet.show(
-        context: context,
-        videoDetectorService: _videoDetectorService,
-        castManager: _castManager,
-      );
-    }
+  void _toggleWebVideoPlayPause() {
+    _controller?.runJavaScript('''
+      (function() {
+        var videos = document.querySelectorAll('video');
+        if (videos.length > 0) {
+          var v = videos[0];
+          if (v.paused) v.play(); else v.pause();
+        }
+      })();
+    ''').catchError((_) {});
+  }
+
+  void _seekWebVideo(int seconds) {
+    _controller?.runJavaScript('''
+      (function() {
+        var videos = document.querySelectorAll('video');
+        if (videos.length > 0) {
+          var v = videos[0];
+          v.currentTime = Math.max(0, v.currentTime + ($seconds));
+        }
+      })();
+    ''').catchError((_) {});
   }
 
   /// Memeriksa pembaruan URL domain dari GitHub raw secara berkala atau saat diminta pengguna
@@ -296,20 +301,6 @@ class _WebViewPageState extends State<WebViewPage> {
     controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
-      ..addJavaScriptChannel(
-        'VideoDetectorChannel',
-        onMessageReceived: (JavaScriptMessage message) {
-          try {
-            final data = jsonDecode(message.message) as Map<String, dynamic>;
-            final type = data['type'] as String?;
-            if (type == 'open_cast_dialog') {
-              _openCastDialog();
-              return;
-            }
-          } catch (_) {}
-          _videoDetectorService.handleMessage(message.message);
-        },
-      )
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
@@ -318,11 +309,6 @@ class _WebViewPageState extends State<WebViewPage> {
                 _loadingProgress = progress;
               });
             }
-            if (progress >= 50 && progress <= 65) {
-              controller
-                  .runJavaScript(VideoDetectorService.getInjectionScript())
-                  .catchError((_) {});
-            }
           },
           onPageStarted: (String url) {
             if (mounted) {
@@ -330,45 +316,28 @@ class _WebViewPageState extends State<WebViewPage> {
                 _isLoading = true;
                 _hasError = false;
                 _errorMessage = null;
+                _currentLoadedUrl = url;
               });
             }
-            _videoDetectorService.clear();
-            _videoDetectorService.updateCurrentPage(url);
-            // Injeksi awal sebelum script halaman lain dieksekusi
-            controller
-                .runJavaScript(VideoDetectorService.getPreInjectionScript())
-                .catchError((_) {});
           },
           onPageFinished: (String url) {
             if (mounted) {
               setState(() {
                 _isLoading = false;
+                _currentLoadedUrl = url;
               });
               // Injeksi JS untuk mencegah popup window.open dan target="_blank"
               _preventPopupsAndNewWindows(controller);
-              // Injeksi JS sniffer video & subtitle lengkap (termasuk iframe injection hooks)
-              controller
-                  .runJavaScript(VideoDetectorService.getInjectionScript())
-                  .catchError((_) {});
-              // Inject ke iframe yang muncul belakangan (player biasanya dimuat setelah halaman selesai)
-              Future.delayed(const Duration(milliseconds: 1200), () {
-                controller.runJavaScript(
-                  'if (window.__injectToIframes) window.__injectToIframes();',
-                ).catchError((_) {});
-              });
-              Future.delayed(const Duration(milliseconds: 3000), () {
-                controller.runJavaScript(
-                  'if (window.__injectToIframes) window.__injectToIframes(); if (window.__triggerFastScan) window.__triggerFastScan();',
-                ).catchError((_) {});
-              });
-              // Sinkronkan status cast ke tombol in-player
-              _syncCastStatusToWeb();
-              // Update judul halaman untuk video detector
+
+              // Update judul halaman
               controller.getTitle().then((title) {
-                if (title != null && title.isNotEmpty) {
-                  _videoDetectorService.updatePageTitle(title);
+                if (title != null && title.isNotEmpty && mounted) {
+                  setState(() {
+                    _currentLoadedTitle = title;
+                  });
                 }
               }).catchError((_) {});
+
               // Terapkan zoom default dan spatial navigation untuk layar TV jika di TV
               if (widget.isTv && _tvRemoteController != null) {
                 controller
@@ -383,15 +352,13 @@ class _WebViewPageState extends State<WebViewPage> {
             }
           },
           onUrlChange: (UrlChange change) {
-            if (change.url != null && change.url!.isNotEmpty) {
-              _videoDetectorService.inspectNetworkUrl(
-                change.url!,
-                referer: _videoDetectorService.currentPageUrl,
-              );
+            if (change.url != null && change.url!.isNotEmpty && mounted) {
+              setState(() {
+                _currentLoadedUrl = change.url!;
+              });
             }
           },
           onWebResourceError: (WebResourceError error) {
-            // Hanya tangani error level halaman utama (bukan resource minor seperti favicon yang gagal)
             if (error.isForMainFrame ?? true) {
               if (mounted) {
                 setState(() {
@@ -403,23 +370,6 @@ class _WebViewPageState extends State<WebViewPage> {
             }
           },
           onNavigationRequest: (NavigationRequest request) {
-            _videoDetectorService.inspectNetworkUrl(
-              request.url,
-              referer: _videoDetectorService.currentPageUrl,
-            );
-
-            final lowerReq = request.url.toLowerCase();
-            if (lowerReq.contains('embed') ||
-                lowerReq.contains('player') ||
-                lowerReq.contains('stream') ||
-                lowerReq.contains('jeniusplay') ||
-                lowerReq.contains('vidhide')) {
-              _videoDetectorService.resolveEmbedUrl(
-                request.url,
-                referer: _videoDetectorService.currentPageUrl,
-              );
-            }
-
             final allowedHost = _config?.allowedHost ?? '';
             final eval = _navigationService.evaluateNavigation(
               request.url,
@@ -641,13 +591,13 @@ class _WebViewPageState extends State<WebViewPage> {
                   if (!_isInitialSplashVisible && _isLoading && !_hasError && _fullscreenCustomWidget == null)
                     LoadingOverlay(progress: _loadingProgress),
 
-                  // 5. Draggable Circular Floating Cast Button
-                  if (_fullscreenCustomWidget == null)
-                    DraggableCastButton(
-                      videoDetectorService: _videoDetectorService,
-                      castManager: _castManager,
+                  // 5. Draggable TV Remote Companion Button (Mobile mode)
+                  if (!widget.isTv && _mobileRemoteService != null && _fullscreenCustomWidget == null)
+                    DraggableTvRemoteButton(
+                      remoteService: _mobileRemoteService!,
+                      getCurrentUrl: () => _currentLoadedUrl.isNotEmpty ? _currentLoadedUrl : (_config?.mainUrl ?? ''),
+                      getCurrentTitle: () => _currentLoadedTitle.isNotEmpty ? _currentLoadedTitle : 'IDLIX Film',
                     ),
-
 
                   // 6b. TV Remote Menu Shortcut Button
                   if (widget.isTv && _fullscreenCustomWidget == null)
@@ -696,8 +646,7 @@ class _WebViewPageState extends State<WebViewPage> {
                       child: TvQuickMenu(
                         remoteController: _tvRemoteController!,
                         getController: () => _controller!,
-                        videoDetectorService: _videoDetectorService,
-                        castManager: _castManager,
+                        tvReceiverService: _tvReceiverService,
                         onOpenSettings: () {
                           _checkRemoteConfigUpdate(showFeedback: true);
                           _checkForAppUpdate(showFeedback: true);
