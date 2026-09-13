@@ -9,6 +9,10 @@ enum RemoteAction {
   fullscreen,
   reload,
   goBack,
+  cursorMove,
+  cursorClick,
+  scroll,
+  autoPlay,
 }
 
 /// Model pesan komando remote LAN
@@ -16,17 +20,26 @@ class RemoteCommand {
   final RemoteAction action;
   final String? url;
   final String? title;
+  final double? dx;
+  final double? dy;
+  final bool? autoPlay;
 
   const RemoteCommand({
     required this.action,
     this.url,
     this.title,
+    this.dx,
+    this.dy,
+    this.autoPlay,
   });
 
   Map<String, dynamic> toJson() => {
         'action': action.name,
         if (url != null) 'url': url,
         if (title != null) 'title': title,
+        if (dx != null) 'dx': dx,
+        if (dy != null) 'dy': dy,
+        if (autoPlay != null) 'autoPlay': autoPlay,
       };
 
   factory RemoteCommand.fromJson(Map<String, dynamic> json) {
@@ -39,6 +52,9 @@ class RemoteCommand {
       action: action,
       url: json['url'] as String?,
       title: json['title'] as String?,
+      dx: (json['dx'] as num?)?.toDouble(),
+      dy: (json['dy'] as num?)?.toDouble(),
+      autoPlay: json['autoPlay'] as bool?,
     );
   }
 

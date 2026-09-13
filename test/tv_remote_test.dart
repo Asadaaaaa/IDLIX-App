@@ -58,12 +58,19 @@ void main() {
       expect(controller.textScaleNotifier.value, 1.5);
     });
 
-    test('cursor visibility is false by default for Netflix focus mode', () {
-      expect(controller.isCursorVisibleNotifier.value, isFalse);
-      controller.isCursorVisibleNotifier.value = true;
+    test('cursor visibility is true by default for TV virtual cursor mode', () {
       expect(controller.isCursorVisibleNotifier.value, isTrue);
       controller.isCursorVisibleNotifier.value = false;
       expect(controller.isCursorVisibleNotifier.value, isFalse);
+      controller.isCursorVisibleNotifier.value = true;
+      expect(controller.isCursorVisibleNotifier.value, isTrue);
+    });
+
+    test('moveCursorBy updates cursor position correctly', () {
+      controller.updateScreenSize(const Size(1920, 1080));
+      controller.cursorPositionNotifier.value = const Offset(500, 500);
+      controller.moveCursorBy(25, -15);
+      expect(controller.cursorPositionNotifier.value, const Offset(525, 485));
     });
 
     test('spatial navigation script is valid and non-empty', () {

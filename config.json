@@ -3,9 +3,9 @@
   "allowed_host": "idlixku.com",
   "name": "IDLIX",
   "updated_at": "2026-09-13",
-  "latest_version": "2.0.0",
-  "latest_version_code": 24,
-  "release_notes": "1. Fitur Baru - LAN Remote & Sync (Mobile ke TV): Kontrol TV langsung dari HP dalam satu jaringan Wi-Fi! Putar film pilihan dari HP langsung ke TV, kontrol Fullscreen, Play/Pause, dan Navigasi.\\n2. Penghapusan Fitur Cast Lama: Menghapus total ketergantungan Chromecast & DLNA yang tidak kompatibel dengan player IDLIX untuk pengalaman yang jauh lebih stabil dan ringan.\\n3. Optimasi Ukuran & Performa: Bebas dari dependensi berat, ukuran APK semakin ramping dan responsif.",
-  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.0.0/IDLIX.apk",
-  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.0.0/IDLIX-TV.apk"
+  "latest_version": "2.1.0",
+  "latest_version_code": 26,
+  "release_notes": "1. Auto-Play Film di TV: Ketika HP menekan 'Putar Film Ini di TV', TV otomatis membuka link dan langsung mengklik tombol play / memutar film secara otomatis.\\n2. Perbaikan Fullscreen TV: Layar penuh pada TV kini bekerja presisi dengan CSS Fullscreen Fixed Overlay (100vw x 100vh) yang handal.\\n3. Kembalikan Kursor Virtual TV: Kursor mouse virtual bulat aktif kembali di layar TV dan dapat dikontrol dengan remote D-Pad maupun HP.\\n4. Trackpad & Scroll HP: Kendalikan kursor mouse TV langsung dari layar HP secara realtime via low-latency UDP, lengkap dengan tap-to-click dan strip scroll.",
+  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.1.0/IDLIX.apk",
+  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v2.1.0/IDLIX-TV.apk"
 }

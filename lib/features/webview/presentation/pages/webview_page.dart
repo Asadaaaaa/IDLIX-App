@@ -8,6 +8,7 @@ import 'package:webview_domain_lock/features/remote_sync/presentation/widgets/dr
 import 'package:webview_domain_lock/features/remote_sync/services/mobile_remote_service.dart';
 import 'package:webview_domain_lock/features/remote_sync/services/tv_receiver_service.dart';
 import 'package:webview_domain_lock/features/tv/presentation/widgets/tv_quick_menu.dart';
+import 'package:webview_domain_lock/features/tv/presentation/widgets/tv_virtual_cursor.dart';
 import 'package:webview_domain_lock/features/tv/services/tv_remote_controller.dart';
 import 'package:webview_domain_lock/features/webview/models/webview_config.dart';
 import 'package:webview_domain_lock/features/webview/presentation/widgets/loading_overlay.dart';
@@ -61,6 +62,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
   String _currentLoadedUrl = '';
   String _currentLoadedTitle = '';
+  bool _pendingAutoPlay = false;
 
   @override
   void initState() {
@@ -113,28 +115,28 @@ class _WebViewPageState extends State<WebViewPage> {
     switch (cmd.action) {
       case RemoteAction.navigate:
         if (cmd.url != null && cmd.url!.isNotEmpty && _controller != null) {
+          _pendingAutoPlay = (cmd.autoPlay == true);
           _controller!.loadRequest(Uri.parse(cmd.url!));
         }
         break;
+      case RemoteAction.autoPlay:
+        _triggerAutoPlay();
+        break;
       case RemoteAction.fullscreen:
-        _controller?.runJavaScript('''
-          (function() {
-            if (window.__exitPlayerFullscreen && window.__isCssFullscreen) {
-              window.__exitPlayerFullscreen();
-              return;
-            }
-            var container = document.getElementById('embed-holder') ||
-                            document.getElementById('player') ||
-                            document.querySelector('.player-embed') ||
-                            document.querySelector('.player-large') ||
-                            document.querySelector('iframe') ||
-                            document.querySelector('video');
-            if (container) {
-              var rfs = container.requestFullscreen || container.webkitRequestFullscreen;
-              if (rfs) rfs.call(container);
-            }
-          })();
-        ''').catchError((_) {});
+        _togglePlayerFullscreen();
+        break;
+      case RemoteAction.cursorMove:
+        if (cmd.dx != null && cmd.dy != null) {
+          _tvRemoteController?.moveCursorBy(cmd.dx!, cmd.dy!);
+        }
+        break;
+      case RemoteAction.cursorClick:
+        _tvRemoteController?.performClick();
+        break;
+      case RemoteAction.scroll:
+        if (cmd.dy != null) {
+          _tvRemoteController?.scrollWeb(0, cmd.dy!.toInt());
+        }
         break;
       case RemoteAction.playPause:
         _toggleWebVideoPlayPause();
@@ -152,6 +154,122 @@ class _WebViewPageState extends State<WebViewPage> {
         _handleBackPress();
         break;
     }
+  }
+
+  /// Otomatis mencari tombol play / iframe player dan memutarnya setelah redirect
+  void _triggerAutoPlay() {
+    _controller?.runJavaScript('''
+      (function() {
+        function tryClickPlay() {
+          // 1. Cari tombol play banner / movie info
+          var playBtns = [
+            document.querySelector('.play-btn'),
+            document.querySelector('.btn-play'),
+            document.querySelector('.play-button'),
+            document.querySelector('a[href*="#player"]'),
+            document.querySelector('a.lnk-blk'),
+            document.querySelector('.dooplay_player_option'),
+            document.querySelector('#playeroptionsul li.on'),
+            document.querySelector('#playeroptionsul li:first-child'),
+            document.querySelector('.server-item'),
+            document.querySelector('.btn-server'),
+            document.querySelector('.jw-display-icon-container'),
+            document.querySelector('.vjs-big-play-button')
+          ];
+          for (var i = 0; i < playBtns.length; i++) {
+            var b = playBtns[i];
+            if (b && typeof b.click === 'function') {
+              try { b.click(); } catch(e) {}
+              break;
+            }
+          }
+
+          // 2. Play tag video jika sudah ada
+          var videos = document.querySelectorAll('video');
+          for (var j = 0; j < videos.length; j++) {
+            try {
+              if (videos[j].paused) {
+                videos[j].play();
+              }
+            } catch(e) {}
+          }
+
+          // 3. Scroll ke player jika ada
+          var player = document.getElementById('embed-holder') || document.getElementById('player') || document.querySelector('.player-embed');
+          if (player) {
+            try { player.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e) {}
+          }
+        }
+
+        tryClickPlay();
+        setTimeout(tryClickPlay, 800);
+        setTimeout(tryClickPlay, 1800);
+        setTimeout(tryClickPlay, 3500);
+      })();
+    ''').catchError((_) {});
+  }
+
+  /// Toggle Fullscreen handal untuk Android TV (CSS Fixed Overlay + Native Fullscreen fallback)
+  void _togglePlayerFullscreen() {
+    _controller?.runJavaScript('''
+      (function() {
+        var container = document.getElementById('embed-holder') ||
+                        document.getElementById('player') ||
+                        document.querySelector('.player-embed') ||
+                        document.querySelector('.player-large') ||
+                        document.querySelector('.play-wrapper') ||
+                        document.querySelector('.embed-responsive') ||
+                        document.querySelector('iframe[src*="embed"]') ||
+                        document.querySelector('iframe[src*="player"]') ||
+                        document.querySelector('iframe') ||
+                        document.querySelector('video');
+        if (!container) return;
+
+        if (window.__isIdlixCssFullscreen) {
+          window.__isIdlixCssFullscreen = false;
+          if (container.dataset.origStyle !== undefined) {
+            container.style.cssText = container.dataset.origStyle;
+          } else {
+            container.style.cssText = '';
+          }
+          var ifr = container.querySelector('iframe') || (container.tagName === 'IFRAME' ? container : null);
+          if (ifr && ifr.dataset.origStyle !== undefined) {
+            ifr.style.cssText = ifr.dataset.origStyle;
+          }
+          document.body.style.overflow = '';
+          if (document.exitFullscreen) {
+            document.exitFullscreen().catch(function(){});
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          }
+          return;
+        }
+
+        window.__isIdlixCssFullscreen = true;
+        container.dataset.origStyle = container.getAttribute('style') || '';
+        container.style.cssText = 'position: fixed !important; top: 0 !important; left: 0 !important; width: 100vw !important; height: 100vh !important; z-index: 2147483647 !important; background: #000 !important; margin: 0 !important; padding: 0 !important; border: none !important;';
+
+        var ifr = container.querySelector('iframe') || (container.tagName === 'IFRAME' ? container : null);
+        if (ifr) {
+          ifr.dataset.origStyle = ifr.getAttribute('style') || '';
+          ifr.style.cssText = 'width: 100vw !important; height: 100vh !important; border: none !important; position: fixed !important; top: 0 !important; left: 0 !important; z-index: 2147483647 !important;';
+          ifr.setAttribute('allowfullscreen', 'true');
+        }
+
+        document.body.style.overflow = 'hidden';
+
+        try {
+          var v = container.querySelector('video') || (container.tagName === 'VIDEO' ? container : null);
+          if (v && v.requestFullscreen) {
+            v.requestFullscreen().catch(function(){});
+          } else if (container.requestFullscreen) {
+            container.requestFullscreen().catch(function(){});
+          } else if (container.webkitRequestFullscreen) {
+            container.webkitRequestFullscreen();
+          }
+        } catch(e) {}
+      })();
+    ''').catchError((_) {});
   }
 
   void _toggleWebVideoPlayPause() {
@@ -338,16 +456,21 @@ class _WebViewPageState extends State<WebViewPage> {
                 }
               }).catchError((_) {});
 
-              // Terapkan zoom default dan spatial navigation untuk layar TV jika di TV
+              // Terapkan zoom default untuk layar TV jika di TV
               if (widget.isTv && _tvRemoteController != null) {
                 controller
                     .runJavaScript(
                       "document.body.style.zoom = '${_tvRemoteController!.textScaleNotifier.value}';",
                     )
                     .catchError((_) {});
-                controller
-                    .runJavaScript(TvRemoteController.getSpatialNavInjectionScript())
-                    .catchError((_) {});
+              }
+
+              // Jika terdapat perintah navigasi dari 'Putar di TV', langsung otomatis jalankan pemutaran film
+              if (_pendingAutoPlay) {
+                _pendingAutoPlay = false;
+                Future.delayed(const Duration(milliseconds: 600), () {
+                  if (mounted) _triggerAutoPlay();
+                });
               }
             }
           },
@@ -474,10 +597,11 @@ class _WebViewPageState extends State<WebViewPage> {
     }
     if (_controller != null) {
       try {
-        final exited = await _controller!.runJavaScriptReturningResult(
-          'window.__exitPlayerFullscreen ? window.__exitPlayerFullscreen() : false;',
+        final isFs = await _controller!.runJavaScriptReturningResult(
+          'window.__isIdlixCssFullscreen ? true : false;',
         );
-        if (exited == true || exited == 'true') {
+        if (isFs == true || isFs == 'true') {
+          _togglePlayerFullscreen();
           return;
         }
       } catch (_) {}
@@ -658,6 +782,10 @@ class _WebViewPageState extends State<WebViewPage> {
                         },
                       ),
                     ),
+
+                  // 8. Virtual Mouse Cursor untuk layar TV
+                  if (widget.isTv && _tvRemoteController != null && _fullscreenCustomWidget == null)
+                    TvVirtualCursor(remoteController: _tvRemoteController!),
                 ],
               ),
             ),

@@ -107,6 +107,11 @@ class TvReceiverService {
       if (message == discoveryProbe) {
         final responseData = utf8.encode('$discoveryResponsePrefix$httpPort');
         _udpSocket!.send(responseData, datagram.address, datagram.port);
+      } else if (message.startsWith('{') && message.endsWith('}')) {
+        try {
+          final cmd = RemoteCommand.fromJsonString(message);
+          onCommandReceived(cmd);
+        } catch (_) {}
       }
     }
   }

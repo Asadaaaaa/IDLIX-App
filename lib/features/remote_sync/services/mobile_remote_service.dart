@@ -50,29 +50,30 @@ class MobileRemoteService {
     isSearchingNotifier.value = true;
 
     try {
-      _udpSocket?.close();
-      _udpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
-      _udpSocket!.broadcastEnabled = true;
+      if (_udpSocket == null) {
+        _udpSocket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+        _udpSocket!.broadcastEnabled = true;
 
-      _udpSocket!.listen((event) {
-        if (event == RawSocketEvent.read && _udpSocket != null) {
-          final datagram = _udpSocket!.receive();
-          if (datagram == null) return;
+        _udpSocket!.listen((event) {
+          if (event == RawSocketEvent.read && _udpSocket != null) {
+            final datagram = _udpSocket!.receive();
+            if (datagram == null) return;
 
-          final message = utf8.decode(datagram.data).trim();
-          if (message.startsWith(TvReceiverService.discoveryResponsePrefix)) {
-            final portStr = message.replaceFirst(
-                TvReceiverService.discoveryResponsePrefix, '');
-            final port = int.tryParse(portStr) ?? TvReceiverService.httpPort;
-            final tvDevice = DiscoveredTvDevice(
-              ip: datagram.address.address,
-              port: port,
-            );
-            connectedTvNotifier.value = tvDevice;
-            isSearchingNotifier.value = false;
+            final message = utf8.decode(datagram.data).trim();
+            if (message.startsWith(TvReceiverService.discoveryResponsePrefix)) {
+              final portStr = message.replaceFirst(
+                  TvReceiverService.discoveryResponsePrefix, '');
+              final port = int.tryParse(portStr) ?? TvReceiverService.httpPort;
+              final tvDevice = DiscoveredTvDevice(
+                ip: datagram.address.address,
+                port: port,
+              );
+              connectedTvNotifier.value = tvDevice;
+              isSearchingNotifier.value = false;
+            }
           }
-        }
-      });
+        });
+      }
 
       // Send probe to broadcast address
       final probeData = utf8.encode(TvReceiverService.discoveryProbe);
@@ -94,18 +95,78 @@ class MobileRemoteService {
     }
   }
 
-  /// Membuka link film di TV
+  /// Membuka link film di TV dengan auto-play otomatis
   Future<bool> playOnTv(String url, {String? title}) async {
     return sendCommand(
       RemoteCommand(
         action: RemoteAction.navigate,
         url: url,
         title: title,
+        autoPlay: true,
       ),
     );
   }
 
-  /// Mengirimkan perintah remote (fullscreen, play/pause, seek, dsb)
+  /// Mengirimkan pergerakan kursor mouse trackpad secara realtime via UDP berlatensi rendah (< 1ms)
+  void sendCursorMove(double dx, double dy) {
+    final tv = connectedTv;
+    if (tv == null || _udpSocket == null) return;
+
+    try {
+      final cmd = RemoteCommand(
+        action: RemoteAction.cursorMove,
+        dx: dx,
+        dy: dy,
+      );
+      final data = utf8.encode(cmd.toJsonString());
+      _udpSocket!.send(
+        data,
+        InternetAddress(tv.ip),
+        TvReceiverService.udpPort,
+      );
+    } catch (_) {}
+  }
+
+  /// Mengirimkan event klik kursor virtual via UDP dan HTTP
+  void sendCursorClick() {
+    final tv = connectedTv;
+    if (tv == null) return;
+
+    const cmd = RemoteCommand(action: RemoteAction.cursorClick);
+    if (_udpSocket != null) {
+      try {
+        final data = utf8.encode(cmd.toJsonString());
+        _udpSocket!.send(
+          data,
+          InternetAddress(tv.ip),
+          TvReceiverService.udpPort,
+        );
+      } catch (_) {}
+    }
+    // Kirim juga via HTTP untuk keandalan maksimal
+    sendCommand(cmd);
+  }
+
+  /// Mengirimkan event scroll vertikal via UDP
+  void sendScroll(double dy) {
+    final tv = connectedTv;
+    if (tv == null || _udpSocket == null) return;
+
+    try {
+      final cmd = RemoteCommand(
+        action: RemoteAction.scroll,
+        dy: dy,
+      );
+      final data = utf8.encode(cmd.toJsonString());
+      _udpSocket!.send(
+        data,
+        InternetAddress(tv.ip),
+        TvReceiverService.udpPort,
+      );
+    } catch (_) {}
+  }
+
+  /// Mengirimkan perintah remote (fullscreen, play/pause, seek, dsb) via HTTP
   Future<bool> sendCommand(RemoteCommand command) async {
     final tv = connectedTv;
     if (tv == null) return false;
@@ -120,7 +181,6 @@ class MobileRemoteService {
       return response.statusCode == HttpStatus.ok;
     } catch (e) {
       debugPrint('Error sending remote command to TV: $e');
-      // If failed, verify if TV is still available
       searchForTv();
       return false;
     }
