@@ -559,6 +559,163 @@ class VideoDetectorService {
     );
   }
 
+  /// Script yang diinjeksi ke dalam iframe (hooks fetch/XHR di dalam iframe player)
+  /// VideoDetectorChannel (android addJavascriptInterface) tersedia di semua frames termasuk cross-origin
+  static String getIframeInjectionScript() {
+    return r'''
+      (function() {
+        if (window.__iframeVideoSnifferInjected) return;
+        window.__iframeVideoSnifferInjected = true;
+
+        function isAdUrl(u) {
+          if (!u || typeof u !== 'string') return true;
+          u = u.toLowerCase();
+          var bad = ['/ad/','/ads/','preroll','vast','vpaid','doubleclick','googlesyndication',
+            'popads','adsterra','propeller','adnxs','adsystem','adservice',
+            'asia9','sbobet','mposport','judionline','monetag','highcpm','slot','casino','betting'];
+          for (var i=0;i<bad.length;i++) if (u.indexOf(bad[i])!==-1) return true;
+          return false;
+        }
+
+        function getChannel() {
+          try { if (window.VideoDetectorChannel) return window.VideoDetectorChannel; } catch(e){}
+          try { if (window.top && window.top.VideoDetectorChannel) return window.top.VideoDetectorChannel; } catch(e){}
+          return null;
+        }
+
+        function sendVideo(url) {
+          if (!url || typeof url !== 'string') return;
+          if (url.indexOf('blob:')===0 || url.indexOf('data:')===0) return;
+          if (isAdUrl(url)) return;
+          var clean = url.split('?')[0].toLowerCase();
+          var isVid = clean.endsWith('.m3u8') || clean.endsWith('.mp4') || clean.endsWith('.webm') ||
+                      clean.endsWith('.mpd') || url.indexOf('.m3u8')!==-1 || url.indexOf('/hls/')!==-1;
+          if (!isVid) return;
+          if (clean.indexOf('.ts')!==-1 || clean.indexOf('.m4s')!==-1 ||
+              clean.indexOf('segment')!==-1 || clean.indexOf('frag')!==-1 || clean.indexOf('/chunk')!==-1) return;
+          window.__lastHlsSource = url;
+          var ch = getChannel();
+          if (!ch) return;
+          try {
+            var title = '';
+            try { title = window.top.document.title || document.title || 'IDLIX Stream'; } catch(e) { title = document.title || 'IDLIX Stream'; }
+            ch.postMessage(JSON.stringify({
+              type:'video_detected', videoUrl:url, title:title,
+              subtitles:[], headers:{'Referer':window.location.href}
+            }));
+          } catch(e) {}
+        }
+
+        function sendSub(url) {
+          if (!url || typeof url !== 'string') return;
+          var clean = url.split('?')[0].toLowerCase();
+          if (!clean.endsWith('.vtt') && !clean.endsWith('.srt') && url.indexOf('.vtt?')===-1) return;
+          var ch = getChannel();
+          if (!ch) return;
+          try { ch.postMessage(JSON.stringify({type:'subtitle_detected',url:url,label:'Subtitle',lang:'auto'})); } catch(e){}
+        }
+
+        function inspect(url) { sendVideo(url); sendSub(url); }
+
+        // Hook fetch
+        var oF = window.fetch;
+        if (oF) window.fetch = function(input,init) {
+          try { inspect(typeof input==='string'?input:(input&&input.url?input.url:'')); } catch(e){}
+          return oF.apply(this,arguments);
+        };
+
+        // Hook XHR
+        var oO = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(m,url) {
+          try { inspect(url); } catch(e){}
+          return oO.apply(this,arguments);
+        };
+
+        // Hook Hls.js loadSource
+        function hookHls(C) {
+          if (!C||!C.prototype||C.__iframeHooked) return;
+          C.__iframeHooked = true;
+          var oL = C.prototype.loadSource;
+          if (oL) C.prototype.loadSource = function(src) {
+            try { inspect(src); } catch(e){}
+            return oL.apply(this,arguments);
+          };
+        }
+        if (window.Hls) hookHls(window.Hls);
+
+        // Intercept Object.defineProperty Hls lazy-loading (Hls dimuat belakangan)
+        var origDefProp = Object.defineProperty;
+        try {
+          Object.defineProperty(window, 'Hls', {
+            configurable: true, enumerable: true,
+            set: function(v) { try { hookHls(v); } catch(e){} origDefProp.call(Object, window, 'Hls', {value:v,writable:true,configurable:true,enumerable:true}); },
+            get: function() { return undefined; }
+          });
+        } catch(e){}
+
+        // Hook HTMLMediaElement.src setter
+        try {
+          var desc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');
+          if (desc && desc.set) {
+            var oS = desc.set;
+            Object.defineProperty(HTMLMediaElement.prototype,'src',{
+              configurable:true, enumerable:true, get:desc.get,
+              set:function(v){try{inspect(v);}catch(e){} return oS.call(this,v);}
+            });
+          }
+        } catch(e){}
+
+        // Hook video.setAttribute
+        var origSetAttr = Element.prototype.setAttribute;
+        Element.prototype.setAttribute = function(name, value) {
+          try {
+            if ((name==='src'||name==='data-src') && this instanceof HTMLMediaElement) inspect(value);
+          } catch(e){}
+          return origSetAttr.apply(this,arguments);
+        };
+
+        // PerformanceObserver untuk semua resource requests termasuk XHR
+        try {
+          if (window.PerformanceObserver) {
+            var po = new PerformanceObserver(function(list){
+              list.getEntries().forEach(function(e){ inspect(e.name); });
+            });
+            po.observe({entryTypes:['resource']});
+          }
+        } catch(e){}
+
+        // Scan existing performance entries + video elements
+        function scanNow() {
+          try {
+            if (window.performance && window.performance.getEntriesByType) {
+              var entries = window.performance.getEntriesByType('resource');
+              for (var i=0;i<entries.length;i++) inspect(entries[i].name);
+            }
+          } catch(e){}
+          try {
+            var vs = document.querySelectorAll('video');
+            for (var j=0;j<vs.length;j++) {
+              var v = vs[j];
+              var src = v.currentSrc || v.src || v.getAttribute('src');
+              if (src && src.indexOf('blob:')!==0) inspect(src);
+              else if (window.__lastHlsSource) sendVideo(window.__lastHlsSource);
+            }
+          } catch(e){}
+        }
+
+        document.addEventListener('play', function(){ setTimeout(scanNow,100); }, true);
+        document.addEventListener('loadeddata', function(){ setTimeout(scanNow,100); }, true);
+        document.addEventListener('canplay', function(){ setTimeout(scanNow,100); }, true);
+
+        scanNow();
+        setTimeout(scanNow,500);
+        setTimeout(scanNow,1500);
+        setTimeout(scanNow,3500);
+        setTimeout(scanNow,7000);
+      })();
+    ''';
+  }
+
   /// Script JavaScript ringan untuk injeksi seawal mungkin (onPageStarted)
   /// Mengaitkan window.fetch, XHR, ObjectURL, dan prototype setter sebelum script halaman dieksekusi
   static String getPreInjectionScript() {
@@ -689,6 +846,8 @@ class VideoDetectorService {
 
   /// Script JavaScript lengkap untuk sniffing video & deteksi transisi iklan ke film
   static String getInjectionScript() {
+    // Gunakan jsonEncode untuk embed iframe script sebagai JSON string di JS
+    final iframeScriptJson = jsonEncode(getIframeInjectionScript());
     return '''
       (function() {
         if (window.__videoSnifferInjected) {
@@ -1272,9 +1431,66 @@ class VideoDetectorService {
           } catch(e) {}
         }
 
-        window.__triggerFastScan = scanMediaElements;
+        // 10. Injeksi ke dalam iframe (same-origin & cross-origin idlixku.com)
+        // Di Android WebView, addJavascriptInterface (VideoDetectorChannel) tersedia di SEMUA frame
+        // termasuk cross-origin iframe — sehingga iframe bisa langsung report via VideoDetectorChannel
+        var __iframeInjectionScript = $iframeScriptJson;
 
-        // 9. Deteksi klik pada tombol "Skip Ad" / "Lewati Iklan" di seluruh halaman
+        function injectToIframes() {
+          try {
+            var iframes = document.querySelectorAll('iframe');
+            for (var fi = 0; fi < iframes.length; fi++) {
+              var ifr = iframes[fi];
+              try {
+                var iwin = ifr.contentWindow;
+                if (iwin && !iwin.__iframeVideoSnifferInjected) {
+                  iwin.eval(__iframeInjectionScript);
+                }
+              } catch(e) {
+                // Cross-origin atau blocked — skip silently
+              }
+            }
+            // Juga coba via window.frames
+            for (var wi = 0; wi < window.frames.length; wi++) {
+              try {
+                var fw = window.frames[wi];
+                if (fw && !fw.__iframeVideoSnifferInjected) {
+                  fw.eval(__iframeInjectionScript);
+                }
+              } catch(e) {}
+            }
+          } catch(e) {}
+        }
+
+        // MutationObserver untuk mendeteksi iframe yang ditambahkan dynamically
+        try {
+          var iframeObserver = new MutationObserver(function(mutations) {
+            var hasNewIframe = false;
+            for (var mi = 0; mi < mutations.length; mi++) {
+              var added = mutations[mi].addedNodes;
+              for (var ni = 0; ni < added.length; ni++) {
+                if (added[ni].tagName === 'IFRAME') { hasNewIframe = true; break; }
+              }
+              if (hasNewIframe) break;
+            }
+            if (hasNewIframe) {
+              setTimeout(injectToIframes, 500);
+              setTimeout(injectToIframes, 1500);
+              setTimeout(injectToIframes, 3000);
+              setTimeout(scanMediaElements, 300);
+            }
+          });
+          iframeObserver.observe(document.body || document.documentElement, {childList:true, subtree:true});
+        } catch(e) {}
+
+        window.__triggerFastScan = function() {
+          scanMediaElements();
+          injectToIframes();
+        };
+
+        window.__injectToIframes = injectToIframes;
+
+        // 11. Deteksi klik pada tombol "Skip Ad" / "Lewati Iklan" / server di seluruh halaman
         document.addEventListener('click', function(e) {
           var target = e.target;
           if (!target) return;
@@ -1282,23 +1498,31 @@ class VideoDetectorService {
           if (btn) {
             setTimeout(scanMediaElements, 300);
             setTimeout(scanMediaElements, 1000);
-            setTimeout(scanMediaElements, 2200);
+            setTimeout(injectToIframes, 500);
+            setTimeout(injectToIframes, 1800);
+            setTimeout(scanMediaElements, 2500);
           }
         }, true);
 
         // Event-driven media scanning
         document.addEventListener('play', function() {
           setTimeout(scanMediaElements, 300);
+          setTimeout(injectToIframes, 200);
         }, true);
         document.addEventListener('loadeddata', function() {
           setTimeout(scanMediaElements, 300);
+          setTimeout(injectToIframes, 200);
         }, true);
 
         // Scan berkala
         scanMediaElements();
+        setTimeout(injectToIframes, 800);
         setTimeout(scanMediaElements, 1000);
+        setTimeout(injectToIframes, 2000);
         setTimeout(scanMediaElements, 2500);
+        setTimeout(injectToIframes, 4000);
         setTimeout(scanMediaElements, 5000);
+        setTimeout(injectToIframes, 7000);
       })();
     ''';
   }

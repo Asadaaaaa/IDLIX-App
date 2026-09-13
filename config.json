@@ -3,9 +3,9 @@
   "allowed_host": "idlixku.com",
   "name": "IDLIX",
   "updated_at": "2026-09-13",
-  "latest_version": "1.9.2",
-  "latest_version_code": 21,
-  "release_notes": "1. Enhanced Video & Movie Stream Detection: Background resolver extracts master .m3u8 playlists, .mp4 files, and subtitles directly from iframe player embeds without CORS limitations.\n2. Built-in Dean Edwards JS Unpacker: Unpacks obfuscated player scripts on IDLIX and embed hosts.\n3. Early Sniffer & Performance API Scanner: Hooks network calls before scripts run and inspects resource history so movie streams are never missed after ads.",
-  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.2/IDLIX.apk",
-  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.2/IDLIX-TV.apk"
+  "latest_version": "1.9.3",
+  "latest_version_code": 22,
+  "release_notes": "1. Iframe Video Detection Fix: Script deteksi sekarang diinjeksi langsung ke dalam iframe player (termasuk cross-origin) menggunakan Android addJavascriptInterface yang tersedia di semua frame.\\n2. MutationObserver Iframe Watcher: Deteksi iframe player yang ditambahkan secara dinamis dan langsung menginjeksi hooks fetch/XHR ke dalamnya.\\n3. Hls.js Lazy-Hook: Intercept Hls class bahkan jika dimuat belakangan via Object.defineProperty trap.",
+  "mobile_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.3/IDLIX.apk",
+  "tv_apk_url": "https://github.com/Asadaaaaa/IDLIX-App/releases/download/v1.9.3/IDLIX-TV.apk"
 }

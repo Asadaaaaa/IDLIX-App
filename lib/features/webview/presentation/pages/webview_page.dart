@@ -158,7 +158,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
   void _openCastDialog() {
     _controller?.runJavaScript(
-      'if (window.__triggerFastScan) window.__triggerFastScan();',
+      'if (window.__triggerFastScan) window.__triggerFastScan(); if (window.__injectToIframes) window.__injectToIframes();',
     ).catchError((_) {});
     if (widget.isTv) {
       setState(() {
@@ -346,10 +346,21 @@ class _WebViewPageState extends State<WebViewPage> {
               });
               // Injeksi JS untuk mencegah popup window.open dan target="_blank"
               _preventPopupsAndNewWindows(controller);
-              // Injeksi JS sniffer video & subtitle lengkap
+              // Injeksi JS sniffer video & subtitle lengkap (termasuk iframe injection hooks)
               controller
                   .runJavaScript(VideoDetectorService.getInjectionScript())
                   .catchError((_) {});
+              // Inject ke iframe yang muncul belakangan (player biasanya dimuat setelah halaman selesai)
+              Future.delayed(const Duration(milliseconds: 1200), () {
+                controller.runJavaScript(
+                  'if (window.__injectToIframes) window.__injectToIframes();',
+                ).catchError((_) {});
+              });
+              Future.delayed(const Duration(milliseconds: 3000), () {
+                controller.runJavaScript(
+                  'if (window.__injectToIframes) window.__injectToIframes(); if (window.__triggerFastScan) window.__triggerFastScan();',
+                ).catchError((_) {});
+              });
               // Sinkronkan status cast ke tombol in-player
               _syncCastStatusToWeb();
               // Update judul halaman untuk video detector
